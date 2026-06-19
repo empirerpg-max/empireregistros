@@ -473,33 +473,13 @@ export default function App() {
             </div>
             <div>
               <h4 className="text-xs font-bold text-slate-200 leading-tight">Empire Registros</h4>
-              <p className="text-[10px] text-slate-400">Google Sheets Live database</p>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {isLiveMode && (
-              <button 
-                onClick={() => carregarDadosDoPlanilha(false)}
-                disabled={isLoadingReal}
-                className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/15 py-1 px-2.5 rounded-lg flex items-center gap-1 cursor-pointer transition"
-              >
-                <RefreshCw className={`w-3 h-3 ${isLoadingReal ? 'animate-spin' : ''}`} />
-                Recarregar Planilha
-              </button>
-            )}
-            <button 
-              onClick={resetForm}
-              className="text-[10px] text-slate-300 hover:text-white font-medium bg-white/5 hover:bg-white/10 px-2 py-1 rounded-lg transition"
-            >
-              🔄 Reset
-            </button>
           </div>
         </div>
 
         {/* Informacoes do Titulo */}
         <div className="text-center mb-1 bg-black/15 py-3 px-4 rounded-xl border border-white/5">
-          <h5 className="text-[14px] font-display font-extrabold text-blue-450 tracking-tight">Regência de Charts</h5>
-          <p className="text-[9.5px] text-slate-400 mt-0.5">Tópico atualmente em foco no fórum</p>
+          <h5 className="text-[14px] font-display font-extrabold text-blue-450 tracking-tight">Tópico</h5>
           {selectedTitulo && (
             <p className="text-xs font-bold text-green-300 bg-emerald-500/10 py-1.5 px-3 rounded-full border border-emerald-500/20 inline-block font-sans mt-2 shadow-inner">
               🎵 {selectedTitulo}
