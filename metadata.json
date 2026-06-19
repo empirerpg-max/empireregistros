@@ -1,0 +1,6 @@
+{
+  "name": "Empire Registros",
+  "description": "Mini App do Telegram para registro de músicas, álbuns e gerenciamento de tópicos no grupo de fórum Empire.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Empire Registros</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #000; color: #fff;
+    font-family: 'Segoe UI', sans-serif;
+    min-height: 100vh; display: flex;
+    flex-direction: column; align-items: center;
+    padding: 24px 16px;
+  }
+  .logo { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; margin-bottom: 10px; border: 2px solid #947af7; }
+  h1 { font-size: 19px; color: #947af7; margin-bottom: 2px; text-align: center; }
+  .subtitle { font-size: 12px; color: #666; margin-bottom: 6px; text-align: center; }
+  .titulo-faixa { font-size: 13px; color: #947af7; font-weight: 700; margin-bottom: 20px; text-align: center; min-height: 18px; }
+  .step { display: none; width: 100%; max-width: 420px; }
+  .step.active { display: flex; flex-direction: column; gap: 10px; }
+  .step-title { font-size: 14px; font-weight: 700; color: #947af7; }
+  .step-sub { font-size: 11px; color: #555; }
+  .btn-option {
+    background: #111; border: 1px solid #947af7; color: #fff;
+    padding: 11px 14px; border-radius: 10px; font-size: 13px;
+    cursor: pointer; text-align: left; transition: background 0.15s; width: 100%;
+  }
+  .btn-option:hover, .btn-option.selected { background: #947af7; color: #000; font-weight: 700; }
+  .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .btn-confirm {
+    background: #947af7; color: #000; border: none;
+    padding: 13px; border-radius: 10px; font-size: 15px;
+    font-weight: 700; cursor: pointer; margin-top: 6px; width: 100%;
+  }
+  .btn-confirm:disabled {
+    background: #444; color: #888; cursor: not-allowed;
+  }
+  .btn-back {
+    background: transparent; color: #947af7; border: 1px solid #2a2a2a;
+    padding: 9px; border-radius: 10px; font-size: 12px; cursor: pointer; width: 100%;
+  }
+  .resumo-item { background: #111; border: 1px solid #1e1e1e; border-radius: 8px; padding: 9px 13px; font-size: 12px; color: #bbb; }
+  .resumo-item span { color: #947af7; font-weight: 700; }
+  input[type="text"] {
+    background: #111; border: 1px solid #947af7; color: #fff;
+    padding: 11px 13px; border-radius: 10px; font-size: 13px; width: 100%; outline: none;
+  }
+  input[type="text"]::placeholder { color: #444; }
+  .lista-scroll { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 7px; }
+  .sel-label { font-size: 11px; color: #947af7; }
+  .loading { text-align: center; color: #947af7; padding: 48px 0; font-size: 14px; }
+  .erro-box { text-align: center; padding: 40px 0; }
+  .erro-box .icon { font-size: 48px; margin-bottom: 12px; }
+  .erro-box p { color: #cf5e5e; font-size: 13px; margin-top: 8px; }
+  .success { text-align: center; padding: 40px 0; }
+  .success .check { font-size: 52px; margin-bottom: 14px; }
+  .success h2 { color: #947af7; font-size: 19px; margin-bottom: 6px; }
+  .success p { color: #888; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<img src="https://images.unsplash.com/photo-1614850523459-c2f4c699c52e?q=80&w=260" class="logo" alt="Empire" onError="this.style.display='none'"/>
+<h1>Empire Registros</h1>
+<p class="subtitle">Registro de músicas</p>
+<p class="titulo-faixa" id="titulo-faixa"></p>
+
+<!-- LOADING -->
+<div class="step active" id="stepLoading">
+  <div class="loading">⏳ Carregando tópicos e artistas...</div>
+</div>
+
+<!-- ERRO -->
+<div class="step" id="stepErro">
+  <div class="erro-box">
+    <div class="icon">❌</div>
+    <p id="erro-msg"></p>
+    <button class="btn-confirm" style="margin-top:20px; background:#1e1e1e; color:#947af7" onclick="retryInit()">🔄 Tentar Novamente</button>
+  </div>
+</div>
+
+<!-- ETAPA 0: SELECIONAR TÓPICO -->
+<div class="step" id="step0">
+  <div class="step-title">📋 Qual tópico você está registrando?</div>
+  <input type="text" id="busca-musica" placeholder="🔍 Buscar pelo nome..." oninput="filtrarMusicas()"/>
+  <div class="lista-scroll" id="lista-musicas-sel"></div>
+</div>
+
+<!-- ETAPA 1: O QUE FAZER -->
+<div class="step" id="step1">
+  <div class="step-title">O que deseja fazer?</div>
+  <button class="btn-option" onclick="escolherOpcao('registrar')">🎵 Registrar nova música nos charts</button>
+  <button class="btn-option" onclick="escolherOpcao('substituir')">🔄 Substituir música existente</button>
+  <button class="btn-option" onclick="escolherOpcao('comentario')">💬 Vincular comentários a uma música</button>
+  <button class="btn-back" onclick="goTo('step0')">← Voltar</button>
+</div>
+
+<!-- ETAPA 2: TIPO DE SINGLE -->
+<div class="step" id="step2">
+  <div class="step-sub">Etapa 1 de 4</div>
+  <div class="step-title">💿 Tipo de Single</div>
+  <div class="btn-grid" id="grid-singles"></div>
+  <button class="btn-back" onclick="goTo('step1')">← Voltar</button>
+</div>
+
+<!-- ETAPA 3: TIPO DE MÚSICA -->
+<div class="step" id="step3">
+  <div class="step-sub">Etapa 2 de 4</div>
+  <div class="step-title">👥 Tipo de Música</div>
+  <div class="btn-grid">
+    <button class="btn-option" onclick="escolherTipo('SOLO')">👤 SOLO</button>
+    <button class="btn-option" onclick="escolherTipo('PARCERIA')">🤝 PARCERIA</button>
+    <button class="btn-option" onclick="escolherTipo('DUETO')">🎤 DUETO</button>
+    <button class="btn-option" onclick="escolherTipo('CONJUNTO')">🎸 CONJUNTO</button>
+  </div>
+  <button class="btn-back" onclick="goTo('step2')">← Voltar</button>
+</div>
+
+<!-- ETAPA 4: ARTISTAS -->
+<div class="step" id="step4">
+  <div class="step-sub">Etapa 3 de 4</div>
+  <div class="step-title" id="step4-title">👤 Artista 1</div>
+  <div class="lista-scroll" id="lista-artistas"></div>
+  <input type="text" id="input-artista" placeholder="Ou digite o nome do artista..."/>
+  <div class="sel-label" id="artista-label"></div>
+  <button class="btn-option" onclick="proximoArtista()">Confirmar artista ➡️</button>
+  <button class="btn-option" id="btn-fin-artistas" style="display:none;border-color:#444;color:#888" onclick="finalizarArtistas()">⏭️ Finalizar artistas</button>
+  <button class="btn-back" onclick="goTo('step3')">← Voltar</button>
+</div>
+
+<!-- ETAPA 5: SUBSTITUIR? -->
+<div class="step" id="step5">
+  <div class="step-sub">Etapa 4 de 4</div>
+  <div class="step-title">🔄 Substituir nos charts?</div>
+  <button class="btn-option" onclick="escolherSubstituir('Sim')">✅ Sim</button>
+  <button class="btn-option" onclick="escolherSubstituir('Não')">❌ Não</button>
+  <button class="btn-back" onclick="goTo('step4')">← Voltar</button>
+</div>
+
+<!-- ETAPA 5B: QUAL MÚSICA SUBSTITUIR -->
+<div class="step" id="step5b">
+  <div class="step-title">🎼 Selecione a música a substituir</div>
+  <div class="lista-scroll" id="lista-substituir"></div>
+  <button class="btn-back" onclick="goTo('step5')">← Voltar</button>
+</div>
+
+<!-- VINCULAR COMENTÁRIO -->
+<div class="step" id="stepComentario">
+  <div class="step-title">🎼 Vincular comentários a qual música?</div>
+  <div class="lista-scroll" id="lista-comentario"></div>
+  <button class="btn-back" onclick="goTo('step1')">← Voltar</button>
+</div>
+
+<!-- RESUMO -->
+<div class="step" id="stepResumo">
+  <div class="step-title">📝 Confirmar Registro</div>
+  <div class="resumo-item">Título: <span id="r-titulo"></span></div>
+  <div class="resumo-item">Single: <span id="r-single"></span></div>
+  <div class="resumo-item">Formato: <span id="r-tipo"></span></div>
+  <div class="resumo-item">Artistas: <span id="r-artistas"></span></div>
+  <div class="resumo-item">Substituir: <span id="r-substituir"></span></div>
+  <div class="resumo-item" id="r-alvo-box" style="display:none">Música alvo: <span id="r-alvo"></span></div>
+  <button class="btn-confirm" onclick="confirmarEnvio()">🚀 Confirmar e Registrar</button>
+  <button class="btn-back" onclick="goTo('step5')">← Voltar</button>
+</div>
+
+<!-- SUCESSO -->
+<div class="step" id="stepSucesso">
+  <div class="success">
+    <div class="check">✅</div>
+    <h2>Registrado!</h2>
+    <p>O registro foi enviado com sucesso.</p>
+  </div>
+</div>
+
+<script>
+  const tg = window.Telegram.WebApp;
+  if (tg) {
+    tg.expand();
+  }
+
+  // URL do Web App do Google Apps Script
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzSLo0Fw5rVYVdztelVNImDQAc6itfoxmuSJVZ7TAUQDRFX9D71QdHBvBCefO-NJd9TgQ/exec';
+
+  const dados = {
+    threadId: '', titulo: '', opcao: '',
+    tipoSingle: '', tipoMusica: '',
+    artistas: [], substituir: 'Não', musicaSubstituida: ''
+  };
+
+  let listaArtistasArr = [];
+  let listaMusicasArr  = []; // { titulo, threadId }[]
+  let numArtistaAtual  = 1;
+
+  function goTo(id) {
+    document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+  }
+
+  function mostrarErro(msg) {
+    document.getElementById('erro-msg').textContent = msg;
+    goTo('stepErro');
+  }
+
+  // ── Carrega lista de tópicos + artistas ───────────────────────────
+  function init() {
+    goTo('stepLoading');
+    fetch(`${SCRIPT_URL}?action=getDados`)
+      .then(r => r.json())
+      .then(res => {
+        if (!res.ok || !res.musicas || res.musicas.length === 0) {
+          mostrarErro('Nenhum tópico encontrado na planilha.');
+          return;
+        }
+        listaMusicasArr  = res.musicas;   // [{titulo, threadId}]
+        listaArtistasArr = res.artistas || [];
+        renderListaSelecaoMusica();
+        goTo('step0');
+      })
+      .catch(err => mostrarErro('Erro ao carregar: ' + err.message));
+  }
+
+  function retryInit() {
+    init();
+  }
+
+  // Inicializa o applet
+  init();
+
+  // ── Step 0: selecionar tópico ─────────────────────────────────────
+  function renderListaSelecaoMusica(filtro) {
+    const container = document.getElementById('lista-musicas-sel');
+    container.innerHTML = '';
+    const lista = filtro
+      ? listaMusicasArr.filter(m => m.titulo.toLowerCase().includes(filtro.toLowerCase()))
+      : listaMusicasArr;
+
+    lista.forEach(m => {
+      const btn = document.createElement('button');
+      btn.className   = 'btn-option';
+      btn.textContent = m.titulo;
+      btn.onclick = () => {
+        dados.threadId = m.threadId;
+        dados.titulo   = m.titulo;
+        document.getElementById('titulo-faixa').textContent = '🎵 ' + m.titulo;
+        goTo('step1');
+      };
+      container.appendChild(btn);
+    });
+
+    if (lista.length === 0) {
+      container.innerHTML = '<p style="color:#555;font-size:12px;text-align:center">Nenhum tópico encontrado.</p>';
+    }
+  }
+
+  function filtrarMusicas() {
+    const termo = document.getElementById('busca-musica').value;
+    renderListaSelecaoMusica(termo);
+  }
+
+  // ── Step 1: o que fazer (corrigido CORS-Safe via GET) ───────────────────────────────────────────
+  function escolherOpcao(opcao) {
+    dados.opcao = opcao;
+    if (opcao === 'comentario') {
+      renderListaSubstituir('lista-comentario', m => {
+        
+        // Exibe loader
+        goTo('stepLoading');
+
+        const payload = {
+          threadId:         dados.threadId,
+          musicaVinculada:  m
+        };
+
+        const params = new URLSearchParams({
+          action: 'vincularComentario',
+          data: JSON.stringify(payload)
+        });
+
+        fetch(`${SCRIPT_URL}?${params.toString()}`)
+          .then(res => res.json())
+          .then(res => {
+            if (res.ok) {
+              goTo('stepSucesso');
+              setTimeout(() => {
+                if (tg && typeof tg.close === 'function') tg.close();
+              }, 3000);
+            } else {
+              mostrarErro('Erro ao vincular comentário: ' + (res.error || 'Erro desconhecido'));
+            }
+          })
+          .catch(err => {
+            mostrarErro('Erro de conexão ao vincular: ' + err.message);
+          });
+      });
+      goTo('stepComentario');
+    } else {
+      renderSingles();
+      goTo('step2');
+    }
+  }
+
+  // ── Step 2: tipo single ───────────────────────────────────────────
+  function renderSingles() {
+    const ophiis = [
+      'LEAD SINGLE','PRÉ-ALBUM','AVULSO','PÓS-ALBUM','PÓS-ALBUM REMIX',
+      'SOUNDTRACK','PROMOCIONAL','TRACKLIST ALBUM','REMIX',
+      'PRÉ-ALBUM REMIX','LEAD SINGLE REMIX','INTERLUDE'
+    ];
+    const grid = document.getElementById('grid-singles');
+    grid.innerHTML = '';
+    ophiis.forEach(op => {
+      const btn = document.createElement('button');
+      btn.className   = 'btn-option';
+      btn.textContent = op;
+      btn.onclick = () => { dados.tipoSingle = op; goTo('step3'); };
+      grid.appendChild(btn);
+    });
+  }
+
+  // ── Step 3: tipo música ───────────────────────────────────────────
+  function escolherTipo(tipo) {
+    dados.tipoMusica = tipo;
+    dados.artistas   = [];
+    numArtistaAtual  = 1;
+    renderArtistas();
+    goTo('step4');
+  }
+
+  // ── Step 4: artistas ──────────────────────────────────────────────
+  function renderArtistas() {
+    document.getElementById('step4-title').textContent   = `👤 Artista ${numArtistaAtual}`;
+    document.getElementById('artista-label').textContent = '';
+    document.getElementById('input-artista').value       = '';
+    document.getElementById('btn-fin-artistas').style.display = numArtistaAtual > 1 ? 'block' : 'none';
+
+    const lista = document.getElementById('lista-artistas');
+    lista.innerHTML = '';
+    listaArtistasArr.forEach(nome => {
+      const btn = document.createElement('button');
+      btn.className   = 'btn-option';
+      btn.textContent = nome;
+      btn.onclick = () => {
+        document.getElementById('input-artista').value       = nome;
+        document.getElementById('artista-label').textContent = '✓ ' + nome;
+        lista.querySelectorAll('.btn-option').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+      };
+      lista.appendChild(btn);
+    });
+  }
+
+  function proximoArtista() {
+    const nome = document.getElementById('input-artista').value.trim();
+    if (!nome) { 
+      if (tg && typeof tg.showAlert === 'function') {
+        tg.showAlert('Selecione ou digite um artista.'); 
+      } else {
+        alert('Selecione ou digite um artista.');
+      }
+      return; 
+    }
+    dados.artistas.push(nome);
+    const max = dados.tipoMusica === 'SOLO' ? 1 : dados.tipoMusica === 'DUETO' ? 2 : 6;
+    if (numArtistaAtual >= max) goTo('step5');
+    else { numArtistaAtual++; renderArtistas(); }
+  }
+
+  function finalizarArtistas() {
+    const nome = document.getElementById('input-artista').value.trim();
+    if (nome) dados.artistas.push(nome);
+    if (dados.artistas.length === 0) { 
+      if (tg && typeof tg.showAlert === 'function') {
+        tg.showAlert('Adicione pelo menos um artista.'); 
+      } else {
+        alert('Adicione pelo menos um artista.');
+      }
+      return; 
+    }
+    goTo('step5');
+  }
+
+  // ── Step 5: substituir ────────────────────────────────────────────
+  function escolherSubstituir(val) {
+    dados.substituir = val;
+    if (val === 'Sim') {
+      renderListaSubstituir('lista-substituir', m => { dados.musicaSubstituida = m; mostrarResumo(); });
+      goTo('step5b');
+    } else {
+      dados.musicaSubstituida = '';
+      mostrarResumo();
+    }
+  }
+
+  function renderListaSubstituir(containerId, callback) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+    listaMusicasArr.forEach(m => {
+      const btn = document.createElement('button');
+      btn.className   = 'btn-option';
+      btn.textContent = m.titulo;
+      btn.onclick     = () => callback(m.titulo);
+      container.appendChild(btn);
+    });
+  }
+
+  // ── Resumo ─────────────────────────────────────────────────────────
+  function mostrarResumo() {
+    document.getElementById('r-titulo').textContent     = dados.titulo;
+    document.getElementById('r-single').textContent     = dados.tipoSingle;
+    document.getElementById('r-tipo').textContent       = dados.tipoMusica;
+    document.getElementById('r-artistas').textContent   = dados.artistas.join(', ');
+    document.getElementById('r-substituir').textContent = dados.substituir;
+    const alvoBox = document.getElementById('r-alvo-box');
+    if (dados.musicaSubstituida) {
+      alvoBox.style.display = 'block';
+      document.getElementById('r-alvo').textContent = dados.musicaSubstituida;
+    } else {
+      alvoBox.style.display = 'none';
+    }
+    goTo('stepResumo');
+  }
+
+  // ── Envio final via Fetch corrigido contra CORS (GET) ───────────────────────────────────
+  function confirmarEnvio() {
+    // Exibe feedbacks visuais para o usuário saber que está gravando
+    const btnConfirmar = document.querySelector('#stepResumo .btn-confirm');
+    if (btnConfirmar) {
+      btnConfirmar.disabled = true;
+      btnConfirmar.textContent = '⏳ Gravando nos charts...';
+    }
+
+    const payload = {
+      threadId:          dados.threadId,
+      titulo:            dados.titulo,
+      tipoSingle:        dados.tipoSingle,
+      tipoMusica:        dados.tipoMusica,
+      artistas:          dados.artistas,
+      substituir:        dados.substituir,
+      musicaSubstituida: dados.musicaSubstituida
+    };
+
+    const params = new URLSearchParams({
+      action: 'gravarMusica',
+      data: JSON.stringify(payload)
+    });
+
+    fetch(`${SCRIPT_URL}?${params.toString()}`)
+      .then(res => res.json())
+      .then(res => {
+        if (res.ok) {
+          goTo('stepSucesso');
+          // Fecha o Mini App automaticamente após 3 segundos
+          setTimeout(() => {
+            if (tg && typeof tg.close === 'function') tg.close();
+          }, 3000);
+        } else {
+          mostrarErro('Falha ao registrar na planilha: ' + (res.error || 'Erro desconhecido'));
+        }
+      })
+      .catch(err => {
+        mostrarErro('Erro de conexão ao enviar: ' + err.message);
+      })
+      .finally(() => {
+        if (btnConfirmar) {
+          btnConfirmar.disabled = false;
+          btnConfirmar.textContent = '🚀 Confirmar e Registrar';
+        }
+      });
+  }
+</script>
+</body>
+</html>
