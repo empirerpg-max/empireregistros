@@ -255,11 +255,12 @@ function processarGravacaoMusicaLocal(body) {
       substituir: body.substituir,
       musicaSubstituida: body.musicaSubstituida,
       artista1: artistasArray[0] || '',
+      artista2: artistsArray[1] || '', // Usamos segurança caso falte
       artista2: artistasArray[1] || '',
       artista3: artistasArray[2] || '',
-      artista4: artistesArray[3] || '',
-      artista5: artistesArray[4] || '',
-      artista6: artistesArray[5] || '',
+      artista4: artistasArray[3] || '',
+      artista5: artistasArray[4] || '',
+      artista6: artistasArray[5] || '',
       threadId: body.threadId
     };
     
@@ -270,6 +271,43 @@ function processarGravacaoMusicaLocal(body) {
     // Registra o erro no debug mas prossegue de forma limpa
     const log = ss.getSheetByName('LOG_DEBUG');
     if (log) log.appendRow([new Date(), 'Erro gravarRegistroFinal / gravarRegistroNaPlanilhaMusicaExterna', errExt.message]);
+  }
+
+  // 1.2 Lógica específica de Mapeamento de Tópicos e Música Substituída na Planilha Músicas (1zMqnIntj5vAlU4_V_s0xf5suPTtFcl61W9DC9j8LFfM)
+  if (body.substituir === 'Sim' && body.musicaSubstituida) {
+    try {
+      const abaMus = getAbaMusicas();
+      if (abaMus) {
+        const dataMus = abaMus.getDataRange().getValues();
+        let idInserido = '';
+        
+        // Pesquisa pelo nome do tópico criado (body.titulo) para copiar o ID em B
+        for (let i = 1; i < dataMus.length; i++) {
+          if (String(dataMus[i][0]).trim().toLowerCase() === String(body.titulo).trim().toLowerCase()) {
+            idInserido = String(dataMus[i][1]); // Coluna B
+            break;
+          }
+        }
+        
+        // Fallback ao threadId do body direto:
+        if (!idInserido) {
+          idInserido = body.threadId;
+        }
+        
+        // Agora pesquisa pelo nome exato da música selecionada pra ser substituída (body.musicaSubstituida) para colocar esse ID na Coluna D
+        if (idInserido && body.musicaSubstituida) {
+          for (let i = 1; i < dataMus.length; i++) {
+            if (String(dataMus[i][0]).trim().toLowerCase() === String(body.musicaSubstituida).trim().toLowerCase()) {
+              abaMus.getRange(i + 1, 4).setValue(idInserido); // Define em D na linha dela com o ID do tópico criado
+              break;
+            }
+          }
+        }
+      }
+    } catch (errMus) {
+      const log = ss.getSheetByName('LOG_DEBUG');
+      if (log) log.appendRow([new Date(), 'Erro ao mapear substituição na planilha Músicas (1zMqnIntj5vAlU4_V_s0xf5suPTtFcl61W9DC9j8LFfM)', errMus.message]);
+    }
   }
 
   // 1.5 Deleta o botão/mensagem de convite original do bot Telegram se ela existir na Coluna E para este tópico
@@ -305,8 +343,11 @@ function processarGravacaoMusicaLocal(body) {
     const artistasArray = (body.artistas && Array.isArray(body.artistas)) ? body.artistas : [];
     const artistas = artistasArray.filter(a => a).join(', ');
     enviarMensagemTelegram(body.threadId,
-      `✅ *Registrado com sucesso!*\n\n🎵 *${body.titulo}*\n💿 ${body.tipoSingle}\n👥 ${body.tipoMusica}: ${artistas}` +
-      (body.substituir === 'Sim' ? `\n🔄 Substitui: ${body.musicaSubstituida}` : '')
+      `✅ *Registrado com sucesso!*` +
+      `\n\n🎵 *${body.titulo}*` +
+      `\n💿 ${body.tipoSingle}` +
+      `\n👥 ${body.tipoMusica}: ${artistas}` +
+      (body.substituir === 'Sim' ? `\n🔄 Substitui nos Charts: ${body.musicaSubstituida}` : '')
     );
   } catch (errTg) {
     Logger.log('Erro ao notificar no Telegram: ' + errTg.message);
@@ -527,21 +568,19 @@ function gravarRegistroFinal(cache) {
   const artista5 = cache.artista5 || '';
   const artista6 = cache.artista6 || '';
 
-  // Caso seja uma substituição de música
+  // Caso seja uma substituição de música (conforme especificação detalhada do usuário)
   if (cache.substituir === 'Sim' && cache.musicaSubstituida) {
     for (let i = 1; i < data.length; i++) {
-      if (String(data[i][1]).trim().toLowerCase() === String(cache.musicaSubstituida).trim().toLowerCase()) {
+      // Pesquisar em A (índice 0) pelo nome de música escolhido pra substituir (cache.musicaSubstituida)
+      if (String(data[i][0]).trim().toLowerCase() === String(cache.musicaSubstituida).trim().toLowerCase()) {
         const linhaAlvo = i + 1;
-        sheet.getRange(linhaAlvo, 1).setValue(hoje); // Coluna A: data da atualização
-        sheet.getRange(linhaAlvo, 2).setValue(cache.titulo || ''); // Coluna B: nome da música
-        sheet.getRange(linhaAlvo, 3).setValue(cache.tipoSingle || ''); // Coluna C: tipo de single
-        sheet.getRange(linhaAlvo, 4).setValue(cache.tipoMusica || ''); // Coluna D: tipo de música
-        sheet.getRange(linhaAlvo, 5).setValue(''); // Coluna E: sem dado por enquanto
-        sheet.getRange(linhaAlvo, 6).setValue(1); // Coluna F: sempre o número 1
-        sheet.getRange(linhaAlvo, 7).setValue(''); // Coluna G: sem dado
-        sheet.getRange(linhaAlvo, 8).setValue(artista1); // Coluna H: sempre o artista principal
-        sheet.getRange(linhaAlvo, 9).setValue(artista2); // Coluna I
-        sheet.getRange(linhaAlvo, 10).setValue(artista3); // Coluna J
+        sheet.getRange(linhaAlvo, 1).setValue(cache.titulo || ''); // Mudar o nome pro nome novo (Coluna A)
+        sheet.getRange(linhaAlvo, 3).setValue(cache.tipoSingle || ''); // Mudar o tipo de single em C pra o tipo selecionado
+        sheet.getRange(linhaAlvo, 4).setValue(cache.tipoMusica || ''); // Mudar o tipo de música em D pra o tipo selecionado
+        sheet.getRange(linhaAlvo, 6).setValue(1); // Mudar em F pra o número 1
+        sheet.getRange(linhaAlvo, 8).setValue(artista1); // Preencher em H o nome do act principal
+        sheet.getRange(linhaAlvo, 9).setValue(artista2); // Preencher em I...
+        sheet.getRange(linhaAlvo, 10).setValue(artista3); // ...até M se tiver algum artista a mais (Coluna J)
         sheet.getRange(linhaAlvo, 11).setValue(artista4); // Coluna K
         sheet.getRange(linhaAlvo, 12).setValue(artista5); // Coluna L
         sheet.getRange(linhaAlvo, 13).setValue(artista6); // Coluna M

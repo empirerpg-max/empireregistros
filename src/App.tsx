@@ -110,6 +110,7 @@ export default function App() {
   const [artistaInput, setArtistaInput] = useState("");
   const [substituirCharts, setSubstituirCharts] = useState("Não");
   const [musicaSubstituida, setMusicaSubstituida] = useState("");
+  const [buscaSubstituir, setBuscaSubstituir] = useState("");
 
   // Aba ativa do painel de controle (Simulador / Instruções / Código GAS / Código HTML)
   const [activeTab, setActiveTab] = useState<'simulador' | 'instrucoes' | 'codigogas' | 'codigohtml'>('simulador');
@@ -469,6 +470,7 @@ export default function App() {
     setArtistaInput("");
     setSubstituirCharts("Não");
     setMusicaSubstituida("");
+    setBuscaSubstituir("");
   };
 
   if (!isAdminMode) {
@@ -767,16 +769,48 @@ export default function App() {
           {step === 'step5b' && (
             <div className="space-y-3">
               <h4 className="text-[11px] font-bold text-blue-400 uppercase tracking-widest text-left font-mono">🎼 Selecione a música a substituir</h4>
-              <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
-                {musicas.filter(m => m.threadId !== selectedThreadId).map(m => (
+              
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="🔍 Pesquisar música..."
+                  value={buscaSubstituir}
+                  onChange={(e) => setBuscaSubstituir(e.target.value)}
+                  className="w-full bg-white/5 border border-white/5 focus:border-blue-500/50 rounded-xl px-3 py-2 text-xs focus:outline-none transition placeholder:text-slate-500"
+                />
+                {buscaSubstituir && (
                   <button
-                    key={m.threadId}
-                    onClick={() => { setMusicaSubstituida(m.titulo); setStep('resumo'); }}
-                    className="w-full text-left bg-white/5 border border-white/5 hover:border-blue-500/40 hover:bg-blue-600/10 hover:text-white py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer"
+                    onClick={() => setBuscaSubstituir("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 hover:text-slate-350 cursor-pointer"
                   >
-                    {m.titulo}
+                    Limpar
                   </button>
-                ))}
+                )}
+              </div>
+
+              <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
+                {(() => {
+                  const filtradas = musicas.filter(m => 
+                    m.threadId !== selectedThreadId && 
+                    m.titulo.toLowerCase().includes(buscaSubstituir.toLowerCase())
+                  );
+                  if (filtradas.length === 0) {
+                    return (
+                      <div className="text-center py-6 text-[10px] text-slate-500 italic">
+                        Nenhuma música encontrada.
+                      </div>
+                    );
+                  }
+                  return filtradas.map(m => (
+                    <button
+                      key={m.threadId}
+                      onClick={() => { setMusicaSubstituida(m.titulo); setStep('resumo'); }}
+                      className="w-full text-left bg-white/5 border border-white/5 hover:border-blue-500/40 hover:bg-blue-600/10 hover:text-white py-2 px-3 rounded-xl text-xs font-semibold transition cursor-pointer"
+                    >
+                      {m.titulo}
+                    </button>
+                  ));
+                })()}
               </div>
               <button onClick={() => setStep('step5')} className="w-full bg-transparent border border-white/5 text-slate-500 text-[9.5px] py-1.5 rounded-xl cursor-pointer">← Voltar</button>
             </div>
@@ -1372,10 +1406,39 @@ export default function App() {
                     {step === 'step5b' && (
                       <div className="space-y-3">
                         <h4 className="text-[11px] font-bold text-blue-400 uppercase tracking-widest text-left font-mono">🎼 Selecione a música a substituir</h4>
+                        
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="🔍 Pesquisar música..."
+                            value={buscaSubstituir}
+                            onChange={(e) => setBuscaSubstituir(e.target.value)}
+                            className="w-full bg-white/5 border border-white/5 focus:border-blue-500/50 rounded-xl px-3 py-2 text-xs focus:outline-none transition placeholder:text-slate-500"
+                          />
+                          {buscaSubstituir && (
+                            <button
+                              onClick={() => setBuscaSubstituir("")}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 hover:text-slate-350 cursor-pointer"
+                            >
+                              Limpar
+                            </button>
+                          )}
+                        </div>
+
                         <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
-                          {musicas
-                            .filter(m => m.threadId !== selectedThreadId)
-                            .map(m => (
+                          {(() => {
+                            const filtradas = musicas.filter(m => 
+                              m.threadId !== selectedThreadId && 
+                              m.titulo.toLowerCase().includes(buscaSubstituir.toLowerCase())
+                            );
+                            if (filtradas.length === 0) {
+                              return (
+                                <div className="text-center py-6 text-[10px] text-slate-500 italic">
+                                  Nenhuma música encontrada.
+                                </div>
+                              );
+                            }
+                            return filtradas.map(m => (
                               <button
                                 key={m.threadId}
                                 onClick={() => { setMusicaSubstituida(m.titulo); setStep('resumo'); }}
@@ -1383,7 +1446,8 @@ export default function App() {
                               >
                                 {m.titulo}
                               </button>
-                          ))}
+                            ));
+                          })()}
                         </div>
                         <button onClick={() => setStep('step5')} className="w-full bg-transparent border border-white/5 text-slate-500 text-[9.5px] py-1.5 rounded-xl cursor-pointer">
                           ← Voltar
