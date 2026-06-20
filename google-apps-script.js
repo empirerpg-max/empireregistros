@@ -203,7 +203,9 @@ function doGet(e) {
       musicas:  obterMusicasDaPlanilha(),
       videos:   obterVideosDaPlanilha(),
       artistas: obterListaArtistas(),
-      musicasEdicaoCharts: obterMusicasEdicaoCharts()
+      musicasEdicaoCharts: obterMusicasEdicaoCharts(),
+      albuns:   obterAlbunsDaPlanilha(),
+      albunsEdicaoCharts:  obterAlbunsEdicaoCharts()
     })).setMimeType(ContentService.MimeType.JSON);
   }
 
@@ -231,6 +233,21 @@ function doGet(e) {
                            .setMimeType(ContentService.MimeType.JSON);
     } catch (err) {
       log.appendRow([new Date(), 'ERRO doGet gravarVideo', err.message]);
+      return ContentService.createTextOutput(JSON.stringify({ ok: false, error: err.message }))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  // ROTA GRAVAÇÃO DE ÁLBUM (CORS-Safe via HTTP GET)
+  if (action === 'gravarAlbum') {
+    try {
+      log.appendRow([new Date(), 'doGet action=gravarAlbum recebido', e.parameter.data]);
+      const body = JSON.parse(e.parameter.data);
+      const res = processarGravacaoAlbumLocal(body);
+      return ContentService.createTextOutput(JSON.stringify({ ok: true, msg: "Álbum gravado", result: res }))
+                           .setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      log.appendRow([new Date(), 'ERRO doGet gravarAlbum', err.message]);
       return ContentService.createTextOutput(JSON.stringify({ ok: false, error: err.message }))
                            .setMimeType(ContentService.MimeType.JSON);
     }
@@ -409,6 +426,25 @@ function obterMusicasEdicaoCharts() {
     const sheet = ssExterna.getSheetByName('EDIÇÃO CHARTS') || ssExterna.getSheetByName('EDICAO CHARTS');
     if (!sheet || sheet.getLastRow() < 2) return [];
     var values = sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).getValues();
+    var lista = [];
+    values.forEach(function(row) {
+      var val = String(row[0]).trim();
+      if (val && lista.indexOf(val) === -1) {
+        lista.push(val);
+      }
+    });
+    return lista;
+  } catch (err) {
+    return [];
+  }
+}
+
+function obterAlbunsEdicaoCharts() {
+  try {
+    const ssExterna = SpreadsheetApp.openById(EXT_SPREADSHEET_ID);
+    const sheet = ssExterna.getSheetByName('EDIÇÃO CHARTS ÁLBUMS') || ssExterna.getSheetByName('EDICAO CHARTS ALBUMS');
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    var values = sheet.getRange(2, 4, sheet.getLastRow() - 1, 1).getValues();
     var lista = [];
     values.forEach(function(row) {
       var val = String(row[0]).trim();
@@ -929,6 +965,56 @@ function processarPayloadWebApp(payloadString) {
     
     return "SUCESSO";
   } catch (e) { return "ERRO: " + e.message; }
+}
+
+function processarGravacaoAlbumLocal(body) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const log = ss.getSheetByName('LOG_DEBUG') || ss.insertSheet('LOG_DEBUG');
+  
+  try {
+    // 1. Grava de forma persistente nas planilhas externas do fluxo de Álbuns
+    gravarRegistroFinalAlbum(body, body.threadId);
+    
+    // 2. Manda a confirmação no Telegram
+    if (body.threadId) {
+      let msg = "";
+      if (body.modoAlbum === 'substituicao' && body.albumSubstituido) {
+        msg = `🔄 *Álbum Substituído com sucesso!*\n\n📀 *${body.titulo}*\n💿 Tipo: ${body.tipoLancamento || 'EP'}\n👤 Artista: ${body.artistaPrincipal || '-'}\n🔢 Músicas: ${body.qtdMusicas || 0}\n🔄 Substituiu nos Charts: ${body.albumSubstituido}`;
+      } else {
+        msg = `✅ *Álbum Registrado com sucesso!*\n\n📀 *${body.titulo}*\n💿 Tipo: ${body.tipoLancamento || 'EP'}\n👤 Artista: ${body.artistaPrincipal || '-'}\n🔢 Músicas: ${body.qtdMusicas || 0}`;
+      }
+      
+      // Lista as músicas no telegram se houver
+      if (body.musicas && body.musicas.length > 0) {
+        msg += `\n\n*Músicas:*\n`;
+        body.musicas.forEach((m, idx) => {
+          msg += `${idx + 1}. ${m.nome || '?'} (${m.tipo || 'TRACKLIST'} / ${m.formato || 'SOLO'})\n`;
+        });
+      }
+      
+      enviarMensagemTelegramAlbuns(body.threadId, msg);
+    }
+    return "SUCESSO";
+  } catch (err) {
+    if (log) log.appendRow([new Date(), 'ERRO processarGravacaoAlbumLocal', err.message]);
+    throw err;
+  }
+}
+
+function obterAlbunsDaPlanilha() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('Álbuns') || ss.getSheetByName('Albuns');
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    const data  = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+    const lista = [];
+    data.forEach(row => {
+      if (row[0] && row[1]) lista.push({ titulo: String(row[0]), threadId: String(row[1]) });
+    });
+    return lista;
+  } catch (e) {
+    return [];
+  }
 }
 
 function salvarMaterialNasAbas(threadId, materiais, tipoMaterial) {

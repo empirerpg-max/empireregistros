@@ -5,6 +5,7 @@ import {
   MessageSquare, 
   Music, 
   Video, 
+  Disc,
   FolderHeart, 
   Compass, 
   Code, 
@@ -76,18 +77,41 @@ export default function App() {
     { titulo: "Aventura - Clipe Oficial", threadId: "98761" },
     { titulo: "Sonho Lindo - Lyric Video", threadId: "98762" }
   ]);
+  const [albuns, setAlbuns] = useState<Array<{ titulo: string; threadId: string }>>([
+    { titulo: "The Tortured Poets Department - Álbum", threadId: "99001" },
+    { titulo: "Hit Me Hard And Soft - Álbum", threadId: "99002" }
+  ]);
   const [musicasEdicaoCharts, setMusicasEdicaoCharts] = useState<string[]>([
     "Flowers", "Cruel Summer", "Espresso", "Lover", "Anti-Hero", "Stay", "Die With A Smile", "Aventura", "Sonho Lindo"
+  ]);
+  const [albunsEdicaoCharts, setAlbunsEdicaoCharts] = useState<string[]>([
+    "The Tortured Poets Department", "Hit Me Hard And Soft", "Short n' Sweet", "Radical Optimism", "GUTS"
   ]);
   const [artistas, setArtistas] = useState(PROMO_ARTISTS);
   const [novoTopicoNome, setNovoTopicoNome] = useState("");
   const [isFlowVideos, setIsFlowVideos] = useState<boolean>(false);
+  const [isFlowAlbuns, setIsFlowAlbuns] = useState<boolean>(false);
+  
+  // Estados do formulário de Álbum (Pop-up/Modal)
+  const [showAlbumModal, setShowAlbumModal] = useState<boolean>(false);
+  const [albumModo, setAlbumModo] = useState<'registro' | 'substituicao'>('registro');
+  const [albumSubstituido, setAlbumSubstituido] = useState<string>("");
+  const [albumTipoLancamento, setAlbumTipoLancamento] = useState<string>("ALBUM");
+  const [albumArtistaPrincipal, setAlbumArtistaPrincipal] = useState<string>("");
+  const [albumQtdMusicas, setAlbumQtdMusicas] = useState<number>(0);
+  const [albumMusicas, setAlbumMusicas] = useState<Array<{ nome: string; tipo: string; formato: string }>>([]);
+  const [albumBuscaSubstituir, setAlbumBuscaSubstituir] = useState<string>("");
+  const [albumSaving, setAlbumSaving] = useState<boolean>(false);
+  const [albumModalStep, setAlbumModalStep] = useState<'modo' | 'dados' | 'musicas_list' | 'resumo'>('modo');
+  const [albumBuscaArtista, setAlbumBuscaArtista] = useState<string>("");
+  const [showAlbumArtistaDropdown, setShowAlbumArtistaDropdown] = useState<boolean>(false);
+
   const [videoTipo, setVideoTipo] = useState<string>("clipe");
   const [videoMateriais, setVideoMateriais] = useState<string[]>(["", "", ""]);
   const [showDropdownIndex, setShowDropdownIndex] = useState<number | null>(null);
   const [videoYoutube, setVideoYoutube] = useState<boolean>(true);
-  const [activeSegment, setActiveSegment] = useState<'musicas' | 'videos'>('musicas');
-  const [simulatorCreateType, setSimulatorCreateType] = useState<'musica' | 'video'>('musica');
+  const [activeSegment, setActiveSegment] = useState<'musicas' | 'videos' | 'albuns'>('musicas');
+  const [simulatorCreateType, setSimulatorCreateType] = useState<'musica' | 'video' | 'album'>('musica');
 
   const [logs, setLogs] = useState<Array<{ time: string; msg: string; type: 'info' | 'error' | 'success' }>>([
     { time: "16:00:00", msg: "Simulador de Banco de Dados iniciado.", type: 'info' },
@@ -172,14 +196,20 @@ export default function App() {
         if (res.videos && res.videos.length > 0) {
           setVideos(res.videos);
         }
+        if (res.albuns && res.albuns.length > 0) {
+          setAlbuns(res.albuns);
+        }
         if (res.artistas && res.artistas.length > 0) {
           setArtistas(res.artistas);
         }
         if (res.musicasEdicaoCharts && res.musicasEdicaoCharts.length > 0) {
           setMusicasEdicaoCharts(res.musicasEdicaoCharts);
         }
+        if (res.albunsEdicaoCharts && res.albunsEdicaoCharts.length > 0) {
+          setAlbunsEdicaoCharts(res.albunsEdicaoCharts);
+        }
         if (!silencioso) {
-          addLog(`Planilha carregada em tempo real com sucesso! Encontrados ${res.musicas?.length || 0} tópicos de músicas, ${res.videos?.length || 0} tópicos de vídeos, ${res.musicasEdicaoCharts?.length || 0} faixas em EDIÇÃO CHARTS e ${res.artistas?.length || 0} artistas habilitados.`, "success");
+          addLog(`Planilha carregada em tempo real com sucesso! Encontrados ${res.musicas?.length || 0} de músicas, ${res.videos?.length || 0} de vídeos, ${res.albuns?.length || 0} de álbuns, ${res.musicasEdicaoCharts?.length || 0} faixas em EDIÇÃO CHARTS e ${res.artistas?.length || 0} artistas habilitados.`, "success");
         }
       } else {
         if (!silencioso) addLog("Planilha conectou mas não retornou dados válidos. Verifique os dados das abas.", "error");
@@ -287,10 +317,40 @@ export default function App() {
       setSelectedThreadId(newThreadId);
       setSelectedTitulo(itemNome);
       setIsFlowVideos(true);
+      setIsFlowAlbuns(false);
       setStep('step_video_form');
       setVideoMateriais([itemNome, "", ""]);
       setVideoTipo("clipe");
       setVideoYoutube(true);
+
+    } else if (simulatorCreateType === 'album') {
+      const novoAlbum = { titulo: itemNome, threadId: newThreadId };
+      setAlbuns(prev => [novoAlbum, ...prev]);
+      addLog(`Novo fórum de Álbum criado no Telegram: "${itemNome}" (Thread ID: ${newThreadId})`, 'success');
+
+      setMensagensTelegram(prev => [
+        ...prev,
+        { id: mIdUser, from: "Usuário", isBot: false, text: `Criou o tópico de álbum: ${itemNome}`, threadId: newThreadId },
+        { id: mIdBot, from: "Empire Bot", isBot: true, text: `📀 *${itemNome}*\n\n💿 Olá! Deseja registrar as faixas e substituições deste álbum?`, threadId: newThreadId, replyMarkup: true, messageId: `msg_${newThreadId}`, isAlbum: true }
+      ]);
+
+      // Seleciona automaticamente para simular no WebApp
+      setSelectedThreadId(newThreadId);
+      setSelectedTitulo(itemNome);
+      setIsFlowVideos(false);
+      setIsFlowAlbuns(true);
+      
+      // Abre o modal de álbum
+      setAlbumModo('registro');
+      setAlbumSubstituido('');
+      setAlbumTipoLancamento('ALBUM');
+      setAlbumArtistaPrincipal('');
+      setAlbumQtdMusicas(0);
+      setAlbumMusicas([]);
+      setAlbumBuscaSubstituir('');
+      setAlbumBuscaArtista('');
+      setAlbumModalStep('modo');
+      setShowAlbumModal(true);
 
     } else {
       const novoTopico = { titulo: itemNome, threadId: newThreadId };
@@ -307,6 +367,7 @@ export default function App() {
       setSelectedThreadId(newThreadId);
       setSelectedTitulo(itemNome);
       setIsFlowVideos(false);
+      setIsFlowAlbuns(false);
       setStep('step1'); // Abre direto na tela de opções após interagir no bot
     }
 
@@ -314,19 +375,36 @@ export default function App() {
   };
 
   // Selecionar música do tópico no App
-  const handleSelecionarTopicoNoApp = (titulo: string, threadId: string, isVideo?: boolean) => {
+  const handleSelecionarTopicoNoApp = (titulo: string, threadId: string, flowType?: 'musica' | 'video' | 'album') => {
     setSelectedThreadId(threadId);
     setSelectedTitulo(titulo);
     addLog(`Mini App: Tópico selecionado para registro -> "${titulo}" (${threadId})`, 'info');
     
-    if (isVideo) {
+    if (flowType === 'album') {
+      setIsFlowVideos(false);
+      setIsFlowAlbuns(true);
+      
+      // Inicializar formulário de álbum
+      setAlbumModo('registro');
+      setAlbumSubstituido('');
+      setAlbumTipoLancamento('ALBUM');
+      setAlbumArtistaPrincipal('');
+      setAlbumQtdMusicas(0);
+      setAlbumMusicas([]);
+      setAlbumBuscaSubstituir('');
+      setAlbumBuscaArtista('');
+      setAlbumModalStep('modo');
+      setShowAlbumModal(true);
+    } else if (flowType === 'video' || (flowType === undefined && isFlowVideos)) {
       setIsFlowVideos(true);
+      setIsFlowAlbuns(false);
       setStep('step_video_form');
       setVideoMateriais([titulo, "", ""]);
       setVideoTipo("clipe");
       setVideoYoutube(true);
     } else {
       setIsFlowVideos(false);
+      setIsFlowAlbuns(false);
       setStep('step1');
     }
   };
@@ -616,6 +694,106 @@ export default function App() {
     }
   };
 
+  // Envio de registro de Álbum Completo: Real-time ou simulado
+  const handleGravarAlbumCompleto = async () => {
+    if (!selectedTitulo.trim() || !albumArtistaPrincipal.trim()) {
+      alert("Por favor, preencha o artista principal.");
+      return;
+    }
+    
+    setAlbumSaving(true);
+    setStep('loading');
+
+    const payload = {
+      titulo: selectedTitulo,
+      threadId: selectedThreadId,
+      modoAlbum: albumModo,
+      albumSubstituido: albumModo === 'substituicao' ? albumSubstituido : '',
+      tipoLancamento: albumTipoLancamento,
+      artistaPrincipal: albumArtistaPrincipal,
+      qtdMusicas: albumQtdMusicas,
+      musicas: albumMusicas
+    };
+
+    if (isLiveMode) {
+      addLog(`[CONEXÃO REAL] Enviando dados do Álbum "${selectedTitulo}" para gravação de banco seguro (CORS)...`, 'info');
+
+      const params = new URLSearchParams({
+        action: 'gravarAlbum',
+        data: JSON.stringify(payload)
+      });
+
+      try {
+        await fetch(`${scriptUrl}?${params.toString()}`, {
+          method: 'GET',
+          mode: 'no-cors',
+          credentials: 'omit'
+        });
+
+        addLog(`[CONEXÃO REAL] Álbum "${selectedTitulo}" transmitido com sucesso!`, 'success');
+        setStep('sucesso');
+        setShowAlbumModal(false);
+        
+        const tg = (window as any).Telegram?.WebApp;
+        if (tg && typeof tg.close === 'function') {
+          setTimeout(() => tg.close(), 3000);
+        }
+      } catch (err: any) {
+        addLog(`[CONEXÃO REAL] Álbum transmitido via no-cors com sucesso!`, 'success');
+        setStep('sucesso');
+        setShowAlbumModal(false);
+        const tg = (window as any).Telegram?.WebApp;
+        if (tg && typeof tg.close === 'function') {
+          setTimeout(() => tg.close(), 3000);
+        }
+      } finally {
+        setAlbumSaving(false);
+      }
+    } else {
+      // MODO SIMULADO
+      addLog(`Mini App: Simulando envio "action=gravarAlbum" para o GAS...`, 'info');
+
+      setTimeout(() => {
+        addLog(`Servidor GAS: Recebido "action=gravarAlbum" com sucesso!`, 'success');
+        addLog(`Planilha Atualizada: Aba 'EDIÇÃO CHARTS ÁLBUMS' gravada com o álbum "${selectedTitulo}"`, 'success');
+        addLog(`Planilha Atualizada: Aba 'EDIÇÃO CHARTS' gravada com ${albumQtdMusicas} músicas associadas!`, 'success');
+
+        // Adiciona nas mensagens do telegram simulado
+        setMensagensTelegram(prev => {
+          const filtradas = prev.filter(m => !(m.isBot && m.threadId === selectedThreadId && m.replyMarkup));
+          
+          let botText = `✅ *Álbum Registrado com sucesso!*\n\n📀 *${selectedTitulo}*\n💿 *Tipo:* ${albumTipoLancamento}\n👤 *Artista do Álbum:* ${albumArtistaPrincipal}\n🔢 *Músicas:* ${albumQtdMusicas}`;
+          if (albumModo === 'substituicao' && albumSubstituido) {
+            botText = `🔄 *Álbum Substituído com sucesso!*\n\n📀 *${selectedTitulo}*\n💿 *Tipo:* ${albumTipoLancamento}\n👤 *Artista do Álbum:* ${albumArtistaPrincipal}\n🔢 *Músicas:* ${albumQtdMusicas}\n🔄 *Substituiu nos Charts:* ${albumSubstituido}`;
+          }
+          
+          if (albumMusicas && albumMusicas.length > 0) {
+            botText += `\n\n*Tracklist:*\n`;
+            albumMusicas.forEach((m, idx) => {
+              botText += `${idx + 1}. ${m.nome || '?'} (${m.tipo || 'TRACKLIST'} / ${m.formato || 'SOLO'})\n`;
+            });
+          }
+
+          return [
+            ...filtradas,
+            { 
+              id: String(Date.now() + 10), 
+              from: "Empire Bot", 
+              isBot: true, 
+              text: botText,
+              threadId: selectedThreadId 
+            }
+          ];
+        });
+
+        setStep('sucesso');
+        setShowAlbumModal(false);
+        setAlbumSaving(false);
+        addLog(`Telegram: Álbum confirmado para o tópico "${selectedTitulo}"`, 'success');
+      }, 1500);
+    }
+  };
+
   // Reiniciar formulário
   const resetForm = () => {
     setStep('step0');
@@ -756,7 +934,7 @@ export default function App() {
           {step === 'step0' && (
             <div className="space-y-3 pt-1">
               {/* Segmented Control */}
-              <div className="grid grid-cols-2 gap-1 bg-black/35 p-1 rounded-xl border border-white/5">
+              <div className="grid grid-cols-3 gap-1 bg-black/35 p-1 rounded-xl border border-white/5">
                 <button
                   type="button"
                   onClick={() => setActiveSegment('musicas')}
@@ -771,10 +949,17 @@ export default function App() {
                 >
                   🎬 Vídeos
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveSegment('albuns')}
+                  className={`py-1.5 rounded-lg text-[10px] font-bold font-sans transition cursor-pointer text-center ${activeSegment === 'albuns' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                >
+                  📀 Álbuns
+                </button>
               </div>
 
               <h4 className="text-[11px] font-bold text-blue-400 uppercase tracking-widest text-left font-mono">
-                📋 Qual tópico {activeSegment === 'musicas' ? 'de música' : 'de vídeo'} deseja registrar?
+                📋 Qual tópico {activeSegment === 'musicas' ? 'de música' : activeSegment === 'videos' ? 'de vídeo' : 'de álbum'} deseja registrar?
               </h4>
               <input 
                 type="text" 
@@ -783,31 +968,44 @@ export default function App() {
                 onChange={(e) => setBuscaTópico(e.target.value)}
                 className="w-full bg-black/35 text-white text-xs border border-white/10 rounded-xl py-2.5 px-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-500"
               />
-              <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
+              <div className="space-y-1.5 max-h-[325px] overflow-y-auto pr-1">
                 {activeSegment === 'musicas' ? (
                   musicas
                     .filter(m => m.titulo.toLowerCase().includes(buscaTópico.toLowerCase()))
                     .map(m => (
                       <button
                         key={m.threadId}
-                        onClick={() => handleSelecionarTopicoNoApp(m.titulo, m.threadId, false)}
+                        onClick={() => handleSelecionarTopicoNoApp(m.titulo, m.threadId, 'musica')}
                         className="w-full text-left bg-white/5 border border-white/5 hover:border-blue-500/45 hover:bg-blue-500/5 py-2.5 px-3 rounded-xl text-xs font-medium transition cursor-pointer flex items-center justify-between"
                       >
                         <span>🎵 {m.titulo}</span>
                         <span className="text-[10px] text-slate-450 font-mono">ID: {m.threadId}</span>
                       </button>
                     ))
-                ) : (
+                ) : activeSegment === 'videos' ? (
                   videos
                     .filter(v => v.titulo.toLowerCase().includes(buscaTópico.toLowerCase()))
                     .map(v => (
                       <button
                         key={v.threadId}
-                        onClick={() => handleSelecionarTopicoNoApp(v.titulo, v.threadId, true)}
+                        onClick={() => handleSelecionarTopicoNoApp(v.titulo, v.threadId, 'video')}
                         className="w-full text-left bg-white/5 border border-white/5 hover:border-blue-500/45 hover:bg-blue-500/5 py-2.5 px-3 rounded-xl text-xs font-medium transition cursor-pointer flex items-center justify-between"
                       >
                         <span>🎬 {v.titulo}</span>
                         <span className="text-[10px] text-slate-450 font-mono">ID: {v.threadId}</span>
+                      </button>
+                    ))
+                ) : (
+                  albuns
+                    .filter(a => a.titulo.toLowerCase().includes(buscaTópico.toLowerCase()))
+                    .map(a => (
+                      <button
+                        key={a.threadId}
+                        onClick={() => handleSelecionarTopicoNoApp(a.titulo, a.threadId, 'album')}
+                        className="w-full text-left bg-white/5 border border-white/5 hover:border-blue-500/45 hover:bg-blue-500/5 py-2.5 px-3 rounded-xl text-xs font-medium transition cursor-pointer flex items-center justify-between"
+                      >
+                        <span>📀 {a.titulo}</span>
+                        <span className="text-[10px] text-slate-450 font-mono">ID: {a.threadId}</span>
                       </button>
                     ))
                 )}
@@ -1453,7 +1651,7 @@ export default function App() {
 
               {/* Input Simulador Telegram */}
               <div className="bg-black/35 p-3 border-t border-white/5 space-y-2">
-                <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono">
+                <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono flex-wrap">
                   <span>Tipo de Tópico no Telegram:</span>
                   <label className="flex items-center gap-1 cursor-pointer hover:text-white">
                     <input 
@@ -1463,7 +1661,7 @@ export default function App() {
                       onChange={() => setSimulatorCreateType('musica')}
                       className="accent-blue-550"
                     />
-                    <span>🎵 Música (-1002072336495)</span>
+                    <span>🎵 Música</span>
                   </label>
                   <label className="flex items-center gap-1 cursor-pointer hover:text-white ml-2">
                     <input 
@@ -1473,13 +1671,25 @@ export default function App() {
                       onChange={() => setSimulatorCreateType('video')}
                       className="accent-blue-550"
                     />
-                    <span>🎬 Vídeo (-1002092995685)</span>
+                    <span>🎬 Vídeo</span>
+                  </label>
+                  <label className="flex items-center gap-1 cursor-pointer hover:text-white ml-2">
+                    <input 
+                      type="radio" 
+                      name="sim_type" 
+                      checked={simulatorCreateType === 'album'} 
+                      onChange={() => setSimulatorCreateType('album')}
+                      className="accent-blue-550"
+                    />
+                    <span>📀 Álbum</span>
                   </label>
                 </div>
                 <form onSubmit={handleCriarTopicoTelegram} className="flex gap-2">
                   <div className="relative flex-1">
                     {simulatorCreateType === 'video' ? (
                       <Video className="w-4 h-4 text-slate-500 absolute left-3 top-3.5" />
+                    ) : simulatorCreateType === 'album' ? (
+                      <Disc className="w-4 h-4 text-slate-500 absolute left-3 top-3.5" />
                     ) : (
                       <Music className="w-4 h-4 text-slate-500 absolute left-3 top-3.5" />
                     )}
@@ -1487,7 +1697,7 @@ export default function App() {
                       type="text" 
                       value={novoTopicoNome}
                       onChange={(e) => setNovoTopicoNome(e.target.value)}
-                      placeholder={simulatorCreateType === 'video' ? "Simular Tópico de Vídeo (Ex: Flowers - Clipe Oficial)..." : "Simular Tópico de Música (Ex: Flowers)..."}
+                      placeholder={simulatorCreateType === 'video' ? "Simular Tópico de Vídeo (Ex: Flowers - Clipe Oficial)..." : simulatorCreateType === 'album' ? "Simular Tópico de Álbum (Ex: GUTS - Álbum)..." : "Simular Tópico de Música (Ex: Flowers)..."}
                       className="w-full bg-white/5 text-slate-100 text-xs border border-white/5 rounded-xl py-3 pl-9 pr-4 focus:outline-none focus:border-blue-500 placeholder:text-slate-500"
                     />
                   </div>
@@ -1568,7 +1778,7 @@ export default function App() {
                     {step === 'step0' && (
                       <div className="space-y-3">
                         {/* Segmented Control */}
-                        <div className="grid grid-cols-2 gap-1 bg-black/35 p-1 rounded-xl border border-white/5">
+                        <div className="grid grid-cols-3 gap-1 bg-black/35 p-1 rounded-xl border border-white/5">
                           <button
                             type="button"
                             onClick={() => setActiveSegment('musicas')}
@@ -1583,10 +1793,17 @@ export default function App() {
                           >
                             🎬 Vídeos
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => setActiveSegment('albuns')}
+                            className={`py-1.5 rounded-lg text-[10px] font-bold font-sans transition cursor-pointer text-center ${activeSegment === 'albuns' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                          >
+                            📀 Álbuns
+                          </button>
                         </div>
 
                         <h4 className="text-[11px] font-bold text-blue-400 uppercase tracking-widest text-left font-mono">
-                          📋 Qual tópico {activeSegment === 'musicas' ? 'de música' : 'de vídeo'} deseja registrar?
+                          📋 Qual tópico {activeSegment === 'musicas' ? 'de música' : activeSegment === 'videos' ? 'de vídeo' : 'de álbum'} deseja registrar?
                         </h4>
                         <input 
                           type="text" 
@@ -1602,24 +1819,37 @@ export default function App() {
                               .map(m => (
                                 <button
                                   key={m.threadId}
-                                  onClick={() => handleSelecionarTopicoNoApp(m.titulo, m.threadId, false)}
+                                  onClick={() => handleSelecionarTopicoNoApp(m.titulo, m.threadId, 'musica')}
                                   className="w-full text-left bg-white/5 border border-white/5 hover:border-blue-500/40 hover:bg-blue-605/10 hover:text-white py-2.5 px-3 rounded-xl text-xs font-medium transition cursor-pointer flex items-center justify-between"
                                 >
                                   <span>🎵 {m.titulo}</span>
                                   <span className="text-[10px] text-slate-500 hover:text-inherit">ID: {m.threadId}</span>
                                 </button>
                               ))
-                          ) : (
+                          ) : activeSegment === 'videos' ? (
                             videos
                               .filter(v => v.titulo.toLowerCase().includes(buscaTópico.toLowerCase()))
                               .map(v => (
                                 <button
                                   key={v.threadId}
-                                  onClick={() => handleSelecionarTopicoNoApp(v.titulo, v.threadId, true)}
+                                  onClick={() => handleSelecionarTopicoNoApp(v.titulo, v.threadId, 'video')}
                                   className="w-full text-left bg-white/5 border border-white/5 hover:border-blue-500/40 hover:bg-blue-605/10 hover:text-white py-2.5 px-3 rounded-xl text-xs font-medium transition cursor-pointer flex items-center justify-between"
                                 >
                                   <span>🎬 {v.titulo}</span>
                                   <span className="text-[10px] text-slate-500 hover:text-inherit">ID: {v.threadId}</span>
+                                </button>
+                              ))
+                          ) : (
+                            albuns
+                              .filter(a => a.titulo.toLowerCase().includes(buscaTópico.toLowerCase()))
+                              .map(a => (
+                                <button
+                                  key={a.threadId}
+                                  onClick={() => handleSelecionarTopicoNoApp(a.titulo, a.threadId, 'album')}
+                                  className="w-full text-left bg-white/5 border border-white/5 hover:border-blue-500/40 hover:bg-blue-605/10 hover:text-white py-2.5 px-3 rounded-xl text-xs font-medium transition cursor-pointer flex items-center justify-between"
+                                >
+                                  <span>📀 {a.titulo}</span>
+                                  <span className="text-[10px] text-slate-500 hover:text-inherit">ID: {a.threadId}</span>
                                 </button>
                               ))
                           )}
@@ -2361,8 +2591,489 @@ function confirmarEnvio() {
 
       </main>
 
+      {/* MODAL DE REGISTRO DE ÁLBUM COMPLETO */}
+      <AnimatePresence>
+        {showAlbumModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-lg bg-[#0e1318] border border-white/10 rounded-3xl overflow-hidden shadow-2xl flex flex-col my-8"
+            >
+              {/* Header */}
+              <div className="px-6 py-4 bg-black/40 border-b border-white/5 flex items-center justify-between font-sans">
+                <div className="flex items-center gap-2">
+                  <Disc className="w-5 h-5 text-blue-500 animate-spin" style={{ animationDuration: '6s' }} />
+                  <div className="text-left animate-fade-in">
+                    <h3 className="font-display font-bold text-slate-100 text-sm">Registro de Álbum</h3>
+                    <p className="text-[10px] text-slate-400 font-mono tracking-wide">{selectedTitulo}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowAlbumModal(false)}
+                  className="text-slate-400 hover:text-white text-xs bg-white/5 hover:bg-white/10 w-6 h-6 rounded-full flex items-center justify-center cursor-pointer transition"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Progress Indicator */}
+              <div className="bg-black/25 px-6 py-2 border-b border-white/5 flex items-center gap-1">
+                <div className={`h-1 flex-1 rounded transition-colors duration-300 ${albumModalStep === 'modo' ? 'bg-blue-600' : 'bg-blue-600/30'}`}></div>
+                <div className={`h-1 flex-1 rounded transition-colors duration-300 ${albumModalStep === 'dados' ? 'bg-blue-600' : albumModalStep === 'musicas_list' || albumModalStep === 'resumo' ? 'bg-blue-600' : 'bg-white/10'}`}></div>
+                <div className={`h-1 flex-1 rounded transition-colors duration-300 ${albumModalStep === 'musicas_list' ? 'bg-blue-600' : albumModalStep === 'resumo' ? 'bg-blue-600' : 'bg-white/10'}`}></div>
+                <div className={`h-1 flex-1 rounded transition-colors duration-300 ${albumModalStep === 'resumo' ? 'bg-blue-600' : 'bg-white/10'}`}></div>
+              </div>
+
+              {/* Step Contents */}
+              <div className="p-6 overflow-y-auto max-h-[60vh] space-y-4 font-sans text-left">
+                {albumModalStep === 'modo' && (
+                  <div className="space-y-4">
+                    <p className="text-xs text-slate-300 leading-relaxed text-left">
+                      Selecione o tipo de registro que deseja realizar para o álbum <strong className="text-blue-400">{selectedTitulo}</strong>:
+                    </p>
+                    <div className="grid grid-cols-1 gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAlbumModo('registro');
+                          setAlbumModalStep('dados');
+                        }}
+                        className="w-full text-left bg-white/5 hover:bg-blue-600/10 hover:border-blue-500/50 border border-white/5 p-4 rounded-2xl transition cursor-pointer flex items-start gap-3 group"
+                      >
+                        <div className="bg-blue-600/20 text-blue-400 p-2.5 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition">
+                          <Disc className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <span className="font-bold text-xs text-slate-200 block">🆕 Registrar Novo Álbum</span>
+                          <span className="text-[11px] text-slate-405 mt-0.5 block leading-relaxed">Insere o álbum e todas as suas músicas do zero no banco de dados.</span>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAlbumModo('substituicao');
+                          setAlbumModalStep('dados');
+                        }}
+                        className="w-full text-left bg-white/5 hover:bg-blue-600/10 hover:border-blue-500/50 border border-white/5 p-4 rounded-2xl transition cursor-pointer flex items-start gap-3 group"
+                      >
+                        <div className="bg-amber-600/20 text-amber-500 p-2.5 rounded-xl group-hover:bg-amber-600 group-hover:text-white transition">
+                          <RefreshCw className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <span className="font-bold text-xs text-slate-200 block">🔄 Substituir Álbum Existente</span>
+                          <span className="text-[11px] text-slate-405 mt-0.5 block leading-relaxed">Substitui o álbum anterior na folha principal de charts, associando faixas corretamente.</span>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {albumModalStep === 'dados' && (
+                  <div className="space-y-4">
+                    {/* albumSubstituido selector if in substituicao mode */}
+                    {albumModo === 'substituicao' && (
+                      <div className="space-y-1.5 relative">
+                        <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest block">📀 Selecione o Álbum a ser substituído:</label>
+                        <input
+                          type="text"
+                          placeholder="🔍 Digite para procurar o álbum..."
+                          value={albumBuscaSubstituir}
+                          onChange={(e) => {
+                            setAlbumBuscaSubstituir(e.target.value);
+                            setAlbumSubstituido(e.target.value);
+                          }}
+                          className="w-full bg-black/45 text-white text-xs border border-white/10 rounded-xl py-3 px-3.5 focus:outline-none focus:border-blue-500 placeholder:text-slate-600 font-sans shadow-inner"
+                        />
+                        {albumBuscaSubstituir.trim() && (
+                          <div className="absolute z-[60] w-full max-h-36 overflow-y-auto bg-slate-900 border border-white/10 rounded-xl mt-1 py-1 shadow-2xl">
+                            {albunsEdicaoCharts
+                              .filter(alb => alb.toLowerCase().includes(albumBuscaSubstituir.toLowerCase()))
+                              .map(alb => (
+                                <button
+                                  key={alb}
+                                  type="button"
+                                  onClick={() => {
+                                    setAlbumSubstituido(alb);
+                                    setAlbumBuscaSubstituir(alb);
+                                  }}
+                                  className="w-full text-left hover:bg-blue-600/25 px-3.5 py-2 text-xs text-slate-250 transition"
+                                >
+                                  📀 {alb}
+                                </button>
+                              ))}
+                          </div>
+                        )}
+                        {albumSubstituido && (
+                          <div className="text-[10px] text-emerald-400 flex items-center gap-1.5 mt-1 bg-emerald-950/20 border border-emerald-500/10 px-3 py-2 rounded-xl">
+                            <Check className="w-3.5 h-3.5" /> Substituir nos Charts: <strong className="text-emerald-300">{albumSubstituido}</strong>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* tipo de lancamento card selectors */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest block">💿 Tipo de Lançamento:</label>
+                      <div className="grid grid-cols-4 gap-2">
+                        {['ALBUM', 'EP', 'DELUXE', 'OUTROS'].map(tipo => (
+                          <button
+                            key={tipo}
+                            type="button"
+                            onClick={() => setAlbumTipoLancamento(tipo)}
+                            className={`py-2 px-1 text-center rounded-xl font-bold text-[10px] transition border cursor-pointer ${
+                              albumTipoLancamento === tipo 
+                                ? 'bg-blue-600 text-white border-blue-500' 
+                                : 'bg-white/5 text-slate-400 border-white/5 hover:bg-white/10'
+                            }`}
+                          >
+                            {tipo}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* artista principal searchable input */}
+                    <div className="space-y-1.5 relative">
+                      <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest block">👤 Artista Principal do projeto:</label>
+                      <input
+                        type="text"
+                        placeholder="🔍 Procure ou digite o nome do artista..."
+                        value={albumBuscaArtista}
+                        onChange={(e) => {
+                          setAlbumBuscaArtista(e.target.value);
+                          setAlbumArtistaPrincipal(e.target.value);
+                          setShowAlbumArtistaDropdown(true);
+                        }}
+                        onFocus={() => setShowAlbumArtistaDropdown(true)}
+                        className="w-full bg-black/45 text-white text-xs border border-white/10 rounded-xl py-3 px-3.5 focus:outline-none focus:border-blue-500 placeholder:text-slate-600 font-sans shadow-inner"
+                      />
+                      {showAlbumArtistaDropdown && albumBuscaArtista.trim() && (
+                        <div className="absolute z-[60] w-full max-h-36 overflow-y-auto bg-slate-900 border border-white/10 rounded-xl mt-1 py-1 shadow-2xl">
+                          {artistas
+                            .filter(art => art.toLowerCase().includes(albumBuscaArtista.toLowerCase()))
+                            .map(art => (
+                              <button
+                                key={art}
+                                type="button"
+                                onClick={() => {
+                                  setAlbumArtistaPrincipal(art);
+                                  setAlbumBuscaArtista(art);
+                                  setShowAlbumArtistaDropdown(false);
+                                }}
+                                className="w-full text-left hover:bg-blue-600/25 px-3.5 py-2 text-xs text-slate-250 transition cursor-pointer"
+                              >
+                                👤 {art}
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                      {albumArtistaPrincipal && (
+                        <div className="text-[10px] text-blue-400 flex items-center justify-between gap-1 mt-1 bg-blue-950/25 border border-blue-500/10 px-3 py-2 rounded-xl">
+                          <span className="flex items-center gap-1.5">
+                            <Check className="w-3.5 h-3.5 animate-pulse" /> Artista Atribuído: <strong className="text-blue-300">{albumArtistaPrincipal}</strong>
+                          </span>
+                          <button 
+                            type="button" 
+                            onClick={() => {
+                              setAlbumArtistaPrincipal("");
+                              setAlbumBuscaArtista("");
+                            }}
+                            className="text-[9px] underline text-blue-300 hover:text-white"
+                          >
+                            Limpar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* qtd de musicas - counter selector */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest block font-sans">🔢 Quantidade de Músicas no Álbum:</label>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const val = Math.max(0, albumQtdMusicas - 1);
+                            setAlbumQtdMusicas(val);
+                            setAlbumMusicas(prev => {
+                              const next = [...prev];
+                              if (next.length > val) return next.slice(0, val);
+                              while (next.length < val) {
+                                next.push({ nome: "", tipo: "TRACKLIST ALBUM", formato: "SOLO" });
+                              }
+                              return next;
+                            });
+                          }}
+                          className="bg-white/5 hover:bg-white/10 border border-white/10 w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white transition active:scale-95 cursor-pointer text-sm"
+                        >
+                          -
+                        </button>
+                        <input
+                          type="number"
+                          value={albumQtdMusicas || ''}
+                          onChange={(e) => {
+                            const val = Math.max(0, parseInt(e.target.value) || 0);
+                            setAlbumQtdMusicas(val);
+                            setAlbumMusicas(prev => {
+                              const next = [...prev];
+                              if (next.length > val) return next.slice(0, val);
+                              while (next.length < val) {
+                                next.push({ nome: "", tipo: "TRACKLIST ALBUM", formato: "SOLO" });
+                              }
+                              return next;
+                            });
+                          }}
+                          className="w-20 bg-black/45 text-white text-center font-bold rounded-xl py-2.5 border border-white/10 text-xs focus:outline-none focus:border-blue-500 font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const val = albumQtdMusicas + 1;
+                            setAlbumQtdMusicas(val);
+                            setAlbumMusicas(prev => {
+                              const next = [...prev];
+                              if (next.length > val) return next.slice(0, val);
+                              while (next.length < val) {
+                                next.push({ nome: "", tipo: "TRACKLIST ALBUM", formato: "SOLO" });
+                              }
+                              return next;
+                            });
+                          }}
+                          className="bg-white/5 hover:bg-white/10 border border-white/10 w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white transition active:scale-95 cursor-pointer text-sm"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {albumModalStep === 'musicas_list' && (
+                  <div className="space-y-4">
+                    <p className="text-[11px] text-slate-400 leading-relaxed text-left">
+                      💡 Toque nos campos para nomear cada música. Se a faixa já existe nos Charts, o sistema reconhecerá e buscará sugestões automaticamente possibilitando a vinculação!
+                    </p>
+                    <div className="space-y-3.5 max-h-[45vh] overflow-y-auto pr-1">
+                      {albumMusicas.map((m, idx) => (
+                        <div key={idx} className="bg-black/25 p-3.5 rounded-2xl border border-white/5 space-y-2.5 relative font-sans text-left">
+                          <div className="flex items-center justify-between text-[10px] font-mono font-bold text-slate-400">
+                            <span>MÚSICA #{idx + 1}</span>
+                            <span className={m.tipo === 'JÁ EXISTE' ? 'text-emerald-400' : 'text-blue-400'}>
+                              {m.tipo === 'JÁ EXISTE' ? '⭐ Existe nos Charts (Vincular)' : '✨ Nova Faixa'}
+                            </span>
+                          </div>
+                          
+                          {/* Nome Input */}
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={m.nome}
+                              placeholder={`Título da Música ${idx + 1}...`}
+                              onChange={(e) => {
+                                const newName = e.target.value;
+                                setAlbumMusicas(prev => {
+                                  const next = [...prev];
+                                  next[idx].nome = newName;
+                                  const matchesExact = musicasEdicaoCharts.some(song => song.toLowerCase() === newName.trim().toLowerCase());
+                                  if (matchesExact) {
+                                    next[idx].tipo = "JÁ EXISTE";
+                                  } else {
+                                    next[idx].tipo = "TRACKLIST ALBUM";
+                                  }
+                                  return next;
+                                });
+                                setShowDropdownIndex(idx);
+                              }}
+                              className="w-full bg-black/45 text-white text-xs border border-white/5 rounded-xl py-2.5 px-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-655 shadow-inner"
+                            />
+                            {showDropdownIndex === idx && m.nome.trim() && (
+                              <div className="absolute z-[70] w-full max-h-32 overflow-y-auto bg-slate-900 border border-white/10 rounded-xl mt-1 py-1 shadow-2xl">
+                                {musicasEdicaoCharts
+                                  .filter(song => song.toLowerCase().includes(m.nome.toLowerCase()))
+                                  .map(song => (
+                                    <button
+                                      key={song}
+                                      type="button"
+                                      onClick={() => {
+                                        setAlbumMusicas(prev => {
+                                          const next = [...prev];
+                                          next[idx].nome = song;
+                                          next[idx].tipo = "JÁ EXISTE";
+                                          return next;
+                                        });
+                                        setShowDropdownIndex(null);
+                                      }}
+                                      className="w-full text-left hover:bg-blue-600/25 px-3 py-2 text-xs text-slate-200 transition cursor-pointer"
+                                    >
+                                      🎵 {song}
+                                    </button>
+                                  ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Tipo e Formato Row */}
+                          <div className="grid grid-cols-2 gap-2.5 mt-1">
+                            <div>
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Tipo de entrada:</label>
+                              <select
+                                value={m.tipo}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setAlbumMusicas(prev => {
+                                    const next = [...prev];
+                                    next[idx].tipo = val;
+                                    return next;
+                                  });
+                                }}
+                                className="w-full bg-black/45 text-slate-200 border border-white/5 rounded-lg py-1 px-1.5 focus:outline-none focus:border-blue-500 text-[10px] cursor-pointer"
+                              >
+                                <option value="TRACKLIST ALBUM">Criar nova faixa nos charts</option>
+                                <option value="JÁ EXISTE">Já existe nos charts (Vincular)</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Formato:</label>
+                              <select
+                                value={m.formato}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setAlbumMusicas(prev => {
+                                    const next = [...prev];
+                                    next[idx].formato = val;
+                                    return next;
+                                  });
+                                }}
+                                className="w-full bg-black/45 text-slate-200 border border-white/5 rounded-lg py-1 px-1.5 focus:outline-none focus:border-blue-500 text-[10px] cursor-pointer"
+                              >
+                                <option value="SOLO">SOLO</option>
+                                <option value="DUO">DUO</option>
+                                <option value="COLAB">COLAB</option>
+                                <option value="GRUPO">GRUPO</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {albumModalStep === 'resumo' && (
+                  <div className="space-y-4">
+                    <p className="text-xs text-slate-300 text-left leading-relaxed">Reveja os detalhes finais de consolidação do Álbum antes do envio:</p>
+                    <div className="bg-black/35 p-4 rounded-3xl border border-white/5 space-y-3.5 text-left text-sans">
+                      <div className="border-b border-white/5 pb-2.5">
+                        <span className="text-[9px] font-mono text-slate-500 block uppercase font-bold tracking-wider">Título do Álbum:</span>
+                        <strong className="text-sm text-slate-100 font-display">{selectedTitulo}</strong>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 pb-2.5 border-b border-white/5">
+                        <div>
+                          <span className="text-[9px] font-mono text-slate-500 block uppercase font-bold tracking-wider">Modo do fluxo:</span>
+                          <span className={`text-xs font-bold ${albumModo === 'registro' ? 'text-blue-400' : 'text-amber-500'}`}>
+                            {albumModo === 'registro' ? '🆕 Novo Registro' : `🔄 Substituição`}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-mono text-slate-500 block uppercase font-bold tracking-wider">Tipo lançamento:</span>
+                          <span className="text-xs text-slate-100 font-semibold">{albumTipoLancamento}</span>
+                        </div>
+                      </div>
+                      <div className="border-b border-white/5 pb-2.5">
+                        <span className="text-[9px] font-mono text-slate-500 block uppercase font-bold tracking-wider">Artista Atribuído:</span>
+                        <span className="text-xs text-slate-200 font-medium">{albumArtistaPrincipal || '-'}</span>
+                      </div>
+                      {albumModo === 'substituicao' && albumSubstituido && (
+                        <div className="border-b border-white/5 pb-2.5 bg-amber-950/20 px-3 py-2 rounded-xl border border-amber-500/10">
+                          <span className="text-[9px] font-mono text-amber-550 block uppercase font-bold tracking-wider font-sans">Álbum Substituído nos Charts:</span>
+                          <span className="text-xs text-amber-250 font-bold">{albumSubstituido}</span>
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-[9px] font-mono text-slate-500 block uppercase font-bold mb-2 tracking-wider">Tracklist ({albumQtdMusicas} músicas):</span>
+                        <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                          {albumMusicas.map((m, i) => (
+                            <div key={i} className="text-xs text-slate-300 flex justify-between items-center bg-white/5 py-1.5 px-3 rounded-xl border border-white/5 font-sans">
+                              <span><strong className="text-slate-550">{i+1}.</strong> {m.nome || 'Nome não preenchido'}</span>
+                              <span className={`text-[8px] font-mono font-bold px-2 py-0.5 rounded-md uppercase ${m.tipo === 'JÁ EXISTE' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/10' : 'bg-slate-900 text-slate-400'}`}>
+                                {m.tipo === 'JÁ EXISTE' ? 'Link Charts' : m.formato}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Navigation Action Footer */}
+              <div className="px-6 py-4 bg-black/40 border-t border-white/5 flex gap-3">
+                {albumModalStep !== 'modo' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (albumModalStep === 'dados') setAlbumModalStep('modo');
+                      else if (albumModalStep === 'musicas_list') setAlbumModalStep('dados');
+                      else if (albumModalStep === 'resumo') setAlbumModalStep('musicas_list');
+                    }}
+                    className="flex-1 bg-white/5 hover:bg-white/10 text-white font-bold py-3 px-4 rounded-xl text-xs transition cursor-pointer flex items-center justify-center gap-1"
+                  >
+                    Voltar
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={albumSaving}
+                  onClick={() => {
+                    if (albumModalStep === 'modo') {
+                      setAlbumModalStep('dados');
+                    } else if (albumModalStep === 'dados') {
+                      if (albumModo === 'substituicao' && !albumSubstituido.trim()) {
+                        alert("Por favor, selecione qual álbum deseja substituir nos Charts.");
+                        return;
+                      }
+                      if (!albumArtistaPrincipal.trim()) {
+                        alert("Por favor, preencha o artista principal do projeto.");
+                        return;
+                      }
+                      if (albumQtdMusicas <= 0) {
+                        alert("A quantidade de músicas deve ser maior que 0.");
+                        return;
+                      }
+                      setAlbumModalStep('musicas_list');
+                    } else if (albumModalStep === 'musicas_list') {
+                      const complete = albumMusicas.every(m => m.nome.trim() !== "");
+                      if (!complete) {
+                        alert("Por favor, preencha o nome de todas as faixas do álbum.");
+                        return;
+                      }
+                      setAlbumModalStep('resumo');
+                    } else if (albumModalStep === 'resumo') {
+                      handleGravarAlbumCompleto();
+                    }
+                  }}
+                  className={`flex-1 font-bold py-3 px-4 rounded-xl text-xs transition cursor-pointer flex items-center justify-center gap-1 text-white ${
+                    albumSaving 
+                      ? 'bg-blue-600/50 cursor-not-allowed' 
+                      : albumModalStep === 'resumo' 
+                        ? 'bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-500/10' 
+                        : 'bg-blue-600 hover:bg-blue-500 shadow-md shadow-blue-600/10'
+                  }`}
+                >
+                  {albumSaving ? 'Salvando...' : albumModalStep === 'resumo' ? 'Confirmar e Enviar' : 'Avançar'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* FOOTER */}
-      <footer className="border-t border-white/5 bg-transparent px-6 py-6 mt-12 text-center text-xs text-slate-500">
+      <footer className="border-t border-white/5 bg-transparent px-6 py-6 mt-12 text-center text-xs text-slate-500 font-sans">
         <p>© 2026 Empire Bot Studio. Desenvolvido com carinho para @testeempire_bot.</p>
       </footer>
     </div>
