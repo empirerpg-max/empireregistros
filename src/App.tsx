@@ -23,7 +23,8 @@ import {
   ExternalLink,
   ChevronRight,
   Database,
-  Settings
+  Settings,
+  Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -106,6 +107,22 @@ export default function App() {
   const [albumBuscaArtista, setAlbumBuscaArtista] = useState<string>("");
   const [showAlbumArtistaDropdown, setShowAlbumArtistaDropdown] = useState<boolean>(false);
 
+  // ESTADOS DO IMPORTADOR DE HISTÓRICO JSON DO TELEGRAM
+  const [jsonInput, setJsonInput] = useState<string>("");
+  const [parsedAlbums, setParsedAlbums] = useState<Array<{
+    id: string;
+    titulo: string;
+    artistaPrincipal: string;
+    tipoLancamento: 'EP' | 'ALBUM' | 'DELUXE';
+    qtdMusicas: number;
+    musicas: Array<{ nome: string; tipo: string; formato: string }>;
+    selected: boolean;
+    status: 'Pendente' | 'Importando' | 'Sucesso' | 'Erro';
+    error?: string;
+  }>>([]);
+  const [isImporting, setIsImporting] = useState<boolean>(false);
+  const [importProgress, setImportProgress] = useState<number>(0);
+
   const [videoTipo, setVideoTipo] = useState<string>("clipe");
   const [videoMateriais, setVideoMateriais] = useState<string[]>(["", "", ""]);
   const [showDropdownIndex, setShowDropdownIndex] = useState<number | null>(null);
@@ -151,14 +168,208 @@ export default function App() {
   const [musicaSubstituida, setMusicaSubstituida] = useState("");
   const [buscaSubstituir, setBuscaSubstituir] = useState("");
 
-  // Aba ativa do painel de controle (Simulador / Instruções / Código GAS / Código HTML)
-  const [activeTab, setActiveTab] = useState<'simulador' | 'instrucoes' | 'codigogas' | 'codigohtml'>('simulador');
+  // Aba ativa do painel de controle (Simulador / Instruções / Código GAS / Código HTML / Importador)
+  const [activeTab, setActiveTab] = useState<'simulador' | 'instrucoes' | 'codigogas' | 'codigohtml' | 'importador'>('simulador');
   const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
 
   // Efeitos colaterais e Logger
   const addLog = (msg: string, type: 'info' | 'error' | 'success' = 'info') => {
     const time = new Date().toLocaleTimeString('pt-BR');
     setLogs(prev => [{ time, msg, type }, ...prev]);
+  };
+
+  // PARSER E IMPORTADOR DE COMENTÁRIOS E ÁLBUNS HISTÓRICOS (TELEGRAM JSON)
+  const handleParseJSON = () => {
+    if (!jsonInput.trim()) {
+      addLog("Por favor, cole o JSON para analisar.", "error");
+      return;
+    }
+    
+    try {
+      const data = JSON.parse(jsonInput);
+      const messages = data.messages || [];
+      if (!Array.isArray(messages)) {
+        addLog("O JSON fornecido não contém uma lista de mensagens válida ('messages' deve ser um array).", "error");
+        return;
+      }
+
+      addLog(`Iniciando análise de ${messages.length} mensagens no JSON...`, "info");
+      
+      const topics = messages.filter((m: any) => m.type === 'service' && m.action === 'topic_created');
+      if (topics.length === 0) {
+        addLog("Nenhum tópico criado ('topic_created') foi detectado no JSON.", "error");
+        return;
+      }
+
+      const albuns_list: any[] = [];
+
+      topics.forEach((topic: any) => {
+        const threadId = String(topic.id);
+        const rawTitle = topic.title || "";
+        
+        let typeVal: 'EP' | 'ALBUM' | 'DELUXE' = "ALBUM";
+        const upperTitle = rawTitle.toUpperCase();
+        if (upperTitle.includes("EP")) {
+          typeVal = "EP";
+        } else if (upperTitle.includes("DELUXE") || upperTitle.includes("DLX")) {
+          typeVal = "DELUXE";
+        }
+
+        let cleanTitle = rawTitle.replace(/^(#?EP|#?ALBUM|#?DELUXE|#?DLX)\s*\|\s*/i, "").trim();
+        
+        let parsedArtist = "Vários Artistas";
+        let parsedAlbum = cleanTitle;
+
+        const splitChars = [" - ", " — ", " : ", ": "];
+        for (const char of splitChars) {
+          if (cleanTitle.includes(char)) {
+            const parts = cleanTitle.split(char);
+            parsedArtist = parts[0].trim();
+            parsedAlbum = parts.slice(1).join(char).trim();
+            break;
+          }
+        }
+
+        parsedAlbum = parsedAlbum.replace(/^["':\s]+|["':\s]+$/g, "").trim();
+        parsedArtist = parsedArtist.replace(/^["':\s]+|["':\s]+$/g, "").trim();
+
+        // Encontrar descrição ou tracklist em respostas a esse tópico
+        const replyMsg = messages.find((m: any) => m.type === "message" && String(m.reply_to_message_id) === threadId);
+        let rawText = "";
+
+        if (replyMsg) {
+          if (typeof replyMsg.text === "string") {
+            rawText = replyMsg.text;
+          } else if (Array.isArray(replyMsg.text)) {
+            rawText = replyMsg.text.map((t: any) => {
+              if (typeof t === "string") return t;
+              if (typeof t === "object" && t !== null && t.text) return t.text;
+              return "";
+            }).join("");
+          }
+        }
+
+        const musicsList: Array<{ nome: string; tipo: string; formato: string }> = [];
+        if (rawText) {
+          const lines = rawText.split("\n");
+          lines.forEach((line: string) => {
+            const trimmed = line.trim();
+            const match = trimmed.match(/^([0-9]+)\s*[\.\-\)\s]+\s*(.+)$/i);
+            if (match) {
+              const trackName = match[2].trim();
+              if (
+                trackName && 
+                !trackName.toLowerCase().startsWith("http") && 
+                !trackName.toLowerCase().includes("ouça") && 
+                !trackName.toLowerCase().includes("clique") &&
+                !trackName.toLowerCase().includes("escute")
+              ) {
+                const hasFeat = trackName.toLowerCase().includes("feat.") || trackName.toLowerCase().includes("with ");
+                musicsList.push({
+                  nome: trackName,
+                  tipo: "TRACKLIST ALBUM",
+                  formato: hasFeat ? "COLAB" : "SOLO"
+                });
+              }
+            }
+          });
+        }
+
+        albuns_list.push({
+          id: threadId,
+          titulo: parsedAlbum,
+          artistaPrincipal: parsedArtist,
+          tipoLancamento: typeVal,
+          qtdMusicas: musicsList.length || 1,
+          musicas: musicsList.length > 0 ? musicsList : [{ nome: parsedAlbum, tipo: "TRACKLIST ALBUM", formato: "SOLO" }],
+          selected: true,
+          status: 'Pendente'
+        });
+      });
+
+      setParsedAlbums(albuns_list);
+      addLog(`Análise Concluída! Foram detectados ${albuns_list.length} álbuns antigos no JSON prontos para gravação.`, "success");
+    } catch(err: any) {
+      addLog(`Erro ao processar JSON: ${err.message}`, "error");
+    }
+  };
+
+  const handleStartBulkImport = async () => {
+    const selected = parsedAlbums.filter(a => a.selected);
+    if (selected.length === 0) {
+      addLog("Nenhum álbum selecionado para importar.", "error");
+      return;
+    }
+
+    setIsImporting(true);
+    setImportProgress(0);
+    addLog(`Iniciando a importação em massa de ${selected.length} álbuns selecionados...`, "info");
+
+    for (let i = 0; i < selected.length; i++) {
+      setImportProgress(i);
+      const album = selected[i];
+      addLog(`[${i + 1}/${selected.length}] Processando: "${album.titulo}" (${album.artistaPrincipal})...`, "info");
+      
+      setParsedAlbums(prev => prev.map(a => a.id === album.id ? { ...a, status: 'Importando' } : a));
+
+      try {
+        const payload = {
+          titulo: album.titulo,
+          threadId: album.id,
+          modoAlbum: "registro",
+          albumSubstituido: "",
+          tipoLancamento: album.tipoLancamento,
+          artistaPrincipal: album.artistaPrincipal,
+          qtdMusicas: album.musicas.length,
+          musicas: album.musicas
+        };
+
+        if (isLiveMode) {
+          const params = new URLSearchParams({
+            action: 'gravarAlbum',
+            data: JSON.stringify(payload)
+          });
+          const response = await fetch(`${scriptUrl}?${params.toString()}`);
+          const res = await response.json();
+          if (res.ok) {
+            setParsedAlbums(prev => prev.map(a => a.id === album.id ? { ...a, status: 'Sucesso' } : a));
+            addLog(`✅ Álbum "${album.titulo}" gravado na planilha externa com sucesso!`, "success");
+          } else {
+            throw new Error(res.error || "Roteamento ou permissão do Apps Script falhou");
+          }
+        } else {
+          // Local/Simulador
+          await new Promise(resolve => setTimeout(resolve, 600));
+          
+          setAlbuns(prev => {
+            if (prev.some(a => String(a.threadId) === String(album.id))) return prev;
+            return [...prev, { titulo: album.titulo, threadId: album.id, artistaPrincipal: album.artistaPrincipal, data: new Date().toLocaleDateString('pt-BR') }];
+          });
+
+          const tracklistFormatted = album.musicas.map((m, idx) => `${idx + 1}. ${m.nome}`).join("\n");
+          setMensagensTelegram(prev => [
+            ...prev,
+            { 
+              id: String(Date.now() + i), 
+              from: "Empire Bot", 
+              isBot: true, 
+              text: `✅ *[IMPORTADOR DE HISTÓRICO]*\n\n📀 *${album.titulo}*\n💿 Tipo: ${album.tipoLancamento}\n👤 Artista: ${album.artistaPrincipal}\n🔢 Músicas: ${album.musicas.length}\n\n*Faixas:*\n${tracklistFormatted}`,
+              threadId: album.id 
+            }
+          ]);
+
+          setParsedAlbums(prev => prev.map(a => a.id === album.id ? { ...a, status: 'Sucesso' } : a));
+          addLog(`✅ [Simulado] Álbum "${album.titulo}" gravado localmente no emulador.`, "success");
+        }
+      } catch (err: any) {
+        setParsedAlbums(prev => prev.map(a => a.id === album.id ? { ...a, status: 'Erro', error: err.message } : a));
+        addLog(`❌ Erro no álbum "${album.titulo}": ${err.message}`, "error");
+      }
+    }
+
+    setIsImporting(false);
+    addLog("🏆 Todas as importações selecionadas foram processadas!", "success");
+    carregarDadosDoPlanilha(true);
   };
 
   const handleCopy = (text: string, index: string) => {
@@ -1468,6 +1679,13 @@ export default function App() {
           >
             🌐 Código Frontend (HTML)
           </button>
+
+          <button 
+            onClick={() => setActiveTab('importador')}
+            className={`px-4 py-2 rounded-lg text-xs font-medium cursor-pointer transition-all ${activeTab === 'importador' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/15' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+          >
+            📥 Importar Histórico JSON
+          </button>
           
           <div className="w-[1px] h-6 bg-white/10 mx-1"></div>
 
@@ -2586,6 +2804,218 @@ function confirmarEnvio() {
 }`}
               </pre>
             </div>
+          </section>
+        )}
+
+        {/* TAB 5: IMPORTADOR DE JSON HISTÓRICO */}
+        {activeTab === 'importador' && (
+          <section className="col-span-12 glass border border-white/5 rounded-2xl p-6 space-y-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/5 pb-3">
+              <div>
+                <h2 className="text-lg font-display font-bold text-blue-400 flex items-center gap-1.5">
+                  <Download className="w-5 h-5 text-blue-500" /> Importador de Histórico JSON do Telegram
+                </h2>
+                <p className="text-xs text-slate-400">Cole o arquivo JSON de backup do chat do Telegram para estruturar os dados de tópicos passados e sincronizá-los com a sua planilha oficial.</p>
+              </div>
+            </div>
+
+            {/* Input e Instruções */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+              <div className="col-span-12 md:col-span-6 space-y-4 text-left">
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest block font-sans">
+                  📋 Conteúdo do JSON:
+                </label>
+                <textarea
+                  value={jsonInput}
+                  onChange={(e) => setJsonInput(e.target.value)}
+                  placeholder={`{ "name": "EMPIRE: Álbuns", "messages": [...] }`}
+                  className="w-full h-80 bg-black/45 text-slate-200 text-xs font-mono border border-white/10 rounded-2xl py-3.5 px-4 focus:outline-none focus:border-blue-500 placeholder:text-slate-700 shadow-inner"
+                />
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleParseJSON}
+                    className="flex-1 bg-blue-600 hover:bg-blue-500 hover:scale-[1.01] active:scale-95 text-white font-bold py-3 px-4 rounded-xl text-xs transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-blue-600/10 hover:shadow-blue-500/25"
+                  >
+                    🔍 Analisar e Mapear Dados
+                  </button>
+                  {parsedAlbums.length > 0 && (
+                    <button
+                      onClick={() => setParsedAlbums([])}
+                      className="bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 font-semibold py-3 px-5 rounded-xl text-xs transition cursor-pointer"
+                    >
+                      Limpar
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Instruções de uso e modo atual */}
+              <div className="col-span-12 md:col-span-6 glass-card p-5 rounded-2xl border border-white/5 bg-white/[0.01] flex flex-col justify-between text-left space-y-4">
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-sm text-slate-200 flex items-center gap-2">
+                    💡 Como funciona o importador?
+                  </h3>
+                  <div className="space-y-2 text-xs text-slate-400 leading-relaxed font-sans">
+                    <p>1. O importador mapeia todas as ações de <strong className="text-blue-400">topic_created</strong> presentes no arquivo JSON para estruturar os dados.</p>
+                    <p>2. Varre as mensagens do tópico em busca de blocos marcados com a tag <strong className="text-blue-400">TRACKLIST</strong> para extrair as músicas de cada álbum automaticamente.</p>
+                    <p>3. Permite que você visualize o resultado e edite as informações se necessário antes de enviar.</p>
+                    <p>4. Ao clicar em <strong className="text-emerald-400">Confirmar e Importar</strong>, o sistema grava cada álbum e suas faixas nas abas <code className="text-slate-300">EDIÇÃO CHARTS ÁLBUMS</code> e <code className="text-slate-300">EDIÇÃO CHARTS</code> de forma automatizada!</p>
+                  </div>
+                </div>
+
+                <div className="border-t border-white/5 pt-4 space-y-1 bg-black/20 p-4 rounded-xl border border-white/5">
+                  <span className="text-[10px] text-slate-500 font-mono block">MODO ATUAL:</span>
+                  <span className={`text-xs font-bold font-sans ${isLiveMode ? 'text-emerald-400' : 'text-blue-400'}`}>
+                    {isLiveMode ? '🔌 CONEXÃO REAL (Google Sheets via CORS)' : '🕹️ SIMULADO (Local no navegador)'}
+                  </span>
+                  <p className="text-[10px] text-slate-500 font-sans mt-1">
+                    {isLiveMode ? 'Os álbuns serão gravados na sua planilha externa vinculada.' : 'Os álbuns serão simulados no Mini App, modificando as listas e logs do emulador.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Lista Mapeada para Preview */}
+            {parsedAlbums.length > 0 && (
+              <div className="space-y-4 font-sans text-left animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-display font-bold text-sm text-slate-200">
+                     💿 Álbuns Detectados ({parsedAlbums.length})
+                  </h3>
+                  
+                  {/* Seleções rápidas */}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setParsedAlbums(prev => prev.map(a => ({ ...a, selected: true })))}
+                      className="text-[10px] hover:text-white text-slate-400 bg-white/5 hover:bg-white/10 px-2.5 py-1.5 rounded-lg border border-white/5 transition"
+                    >
+                      Selecionar Todos
+                    </button>
+                    <button
+                      onClick={() => setParsedAlbums(prev => prev.map(a => ({ ...a, selected: false })))}
+                      className="text-[10px] hover:text-white text-slate-400 bg-white/5 hover:bg-white/10 px-2.5 py-1.5 rounded-lg border border-white/5 transition"
+                    >
+                      Desmarcar Todos
+                    </button>
+                  </div>
+                </div>
+
+                <div className="border border-white/5 bg-black/35 rounded-2xl overflow-hidden overflow-x-auto">
+                  <table className="w-full text-xs text-left text-slate-300">
+                    <thead className="text-[10px] text-slate-400 uppercase tracking-wider bg-black/40 border-b border-white/5 font-mono">
+                      <tr>
+                        <th className="p-4 w-12 text-center">Sel.</th>
+                        <th className="p-4 w-20">ID Tópico</th>
+                        <th className="p-4">Álbum</th>
+                        <th className="p-4">Artista</th>
+                        <th className="p-4 w-28">Tipo</th>
+                        <th className="p-4 w-24 text-center">Músicas</th>
+                        <th className="p-4 w-32">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 leading-relaxed">
+                      {parsedAlbums.map((album) => (
+                        <tr key={album.id} className={`hover:bg-white/[0.02] transition ${album.selected ? 'bg-blue-600/[0.01]' : 'opacity-60'}`}>
+                          <td className="p-4 text-center">
+                            <input
+                              type="checkbox"
+                              checked={album.selected}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setParsedAlbums(prev => prev.map(a => a.id === album.id ? { ...a, selected: checked } : a));
+                              }}
+                              className="w-4 h-4 accent-blue-600 rounded border-white/10 cursor-pointer"
+                            />
+                          </td>
+                          <td className="p-4 font-mono text-slate-500 text-[10px]">#{album.id}</td>
+                          <td className="p-4 font-semibold text-slate-200">
+                            <input
+                              type="text"
+                              value={album.titulo}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setParsedAlbums(prev => prev.map(a => a.id === album.id ? { ...a, titulo: val } : a));
+                              }}
+                              className="bg-transparent text-slate-100 hover:bg-white/5 focus:bg-slate-900 border border-transparent focus:border-blue-500 rounded px-2 py-1 w-full"
+                            />
+                          </td>
+                          <td className="p-4">
+                            <input
+                              type="text"
+                              value={album.artistaPrincipal}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setParsedAlbums(prev => prev.map(a => a.id === album.id ? { ...a, artistaPrincipal: val } : a));
+                              }}
+                              className="bg-transparent text-slate-300 hover:bg-white/5 focus:bg-slate-900 border border-transparent focus:border-blue-500 rounded px-2 py-1 w-full"
+                            />
+                          </td>
+                          <td className="p-4">
+                            <select
+                              value={album.tipoLancamento}
+                              onChange={(e) => {
+                                const val = e.target.value as 'EP' | 'ALBUM' | 'DELUXE';
+                                setParsedAlbums(prev => prev.map(a => a.id === album.id ? { ...a, tipoLancamento: val } : a));
+                              }}
+                              className="bg-[#11161d] text-slate-300 border border-white/5 rounded px-2 py-1 focus:outline-none focus:border-blue-500"
+                            >
+                              <option value="ALBUM">ALBUM</option>
+                              <option value="EP">EP</option>
+                              <option value="DELUXE">DELUXE</option>
+                            </select>
+                          </td>
+                          <td className="p-4 text-center font-mono font-medium">
+                            <span className="bg-white/5 border border-white/5 px-2 py-1 rounded-md text-slate-400 font-mono">
+                              {album.musicas.length}
+                            </span>
+                          </td>
+                          <td className="p-4">
+                            {album.status === 'Pendente' && <span className="text-slate-400 font-mono text-[10px]">⏳ Pendente</span>}
+                            {album.status === 'Importando' && <span className="text-blue-400 font-mono text-[10px] animate-pulse">⚡ Importando...</span>}
+                            {album.status === 'Sucesso' && <span className="text-emerald-400 font-mono text-[10px] font-bold">✅ SUCESSO</span>}
+                            {album.status === 'Erro' && <span className="text-rose-500 font-mono text-[10px] font-bold" title={album.error}>❌ Falhou</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Confirm Import Block */}
+                <div className="flex items-center justify-between bg-black/40 p-5 rounded-2xl border border-white/5 mt-4">
+                  <div className="space-y-1">
+                    <p className="text-xs text-slate-300">
+                      Pronto para iniciar a importação sequencial dos álbuns selecionados?
+                    </p>
+                    <p className="text-[10px] text-slate-500 font-sans">
+                      Dica: Para evitar concorrência ou limites do GAS, as chamadas serão realizadas uma após a outra em intervalos curtos.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleStartBulkImport}
+                    disabled={isImporting || parsedAlbums.filter(a => a.selected).length === 0}
+                    className={`font-semibold py-3.5 px-6 rounded-xl text-xs transition flex items-center gap-2 cursor-pointer text-white shadow-xl ${
+                      isImporting 
+                        ? 'bg-blue-600/50 cursor-not-allowed'
+                        : parsedAlbums.filter(a => a.selected).length === 0
+                          ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5'
+                          : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/15'
+                    }`}
+                  >
+                    {isImporting ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" /> Importando ({importProgress + 1}/{parsedAlbums.filter(a => a.selected).length})...
+                      </>
+                    ) : (
+                      <>
+                        🚀 Confirmar e Importar {parsedAlbums.filter(a => a.selected).length} Álbuns
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </section>
         )}
 
