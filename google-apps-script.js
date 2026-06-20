@@ -1050,9 +1050,10 @@ function registrarNotaEMediaMusicas(threadId, nota, nomeOff) {
 // ==========================================
 
 function iniciarFluxoVideos(threadId, nomeTopico) {
-  const txt = `🎬 Olá! Deseja registrar comentários para o material "${nomeTopico}"?`;
-  const teclado = { inline_keyboard: [[{ text: "✅ Sim", callback_data: "v_start_sim" }, { text: "❌ Não", callback_data: "v_start_nao" }]] };
-  enviarMensagemTelegramVideos(threadId, txt, teclado);
+  const urlNativa = `${URL_MINI_APP}?startapp=${threadId}_video&threadId=${threadId}&flow=video`;
+  const tecladoApp = { inline_keyboard: [[ { text: "🎬 Registrar no Painel", url: urlNativa } ]] };
+  let res = enviarMensagemTelegramVideos(threadId, `🎬 *${nomeTopico}*\n\n📋 Toque no botão abaixo para registrar os materiais e comentários deste vídeo diretamente no Painel Gráfico:`, tecladoApp);
+  if (res && res.ok) salvarCache("appMsg", threadId, { msgId: res.result.message_id });
 }
 
 // Auxiliar para editar vídeos
@@ -1303,13 +1304,10 @@ function mt_join(atual, nome, valor) {
 // ==========================================
 
 function iniciarFluxoAlbuns(threadId, nomeTopico) {
-  enviarMensagemTelegramAlbuns(threadId,
-    `📀 *Novo tópico de álbum detectado:* "${nomeTopico}"\n\nDeseja registrar as faixas e substituições deste álbum?`,
-    { inline_keyboard: [
-      [{ text: '✅ Sim', callback_data: 'alb_reg_sim' },
-       { text: '❌ Não', callback_data: 'alb_cancelar' }]
-    ]}
-  );
+  const urlNativa = `${URL_MINI_APP}?startapp=${threadId}_album&threadId=${threadId}&flow=album`;
+  const tecladoApp = { inline_keyboard: [[ { text: "📀 Configurar Álbum", url: urlNativa } ]] };
+  let res = enviarMensagemTelegramAlbuns(threadId, `📀 *${nomeTopico}*\n\n📋 Toque no botão abaixo para configurar e registrar as faixas, modos e substituições deste álbum diretamente no Painel Gráfico:`, tecladoApp);
+  if (res && res.ok) salvarCache("appMsgAlb", threadId, { msgId: res.result.message_id });
 }
 
 function processarCallbackQueryAlbuns(cb) {
