@@ -255,7 +255,6 @@ function processarGravacaoMusicaLocal(body) {
       substituir: body.substituir,
       musicaSubstituida: body.musicaSubstituida,
       artista1: artistasArray[0] || '',
-      artista2: artistsArray[1] || '', // Usamos segurança caso falte
       artista2: artistasArray[1] || '',
       artista3: artistasArray[2] || '',
       artista4: artistasArray[3] || '',
@@ -342,13 +341,22 @@ function processarGravacaoMusicaLocal(body) {
   try {
     const artistasArray = (body.artistas && Array.isArray(body.artistas)) ? body.artistas : [];
     const artistas = artistasArray.filter(a => a).join(', ');
-    enviarMensagemTelegram(body.threadId,
-      `✅ *Registrado com sucesso!*` +
-      `\n\n🎵 *${body.titulo}*` +
-      `\n💿 ${body.tipoSingle}` +
-      `\n👥 ${body.tipoMusica}: ${artistas}` +
-      (body.substituir === 'Sim' ? `\n🔄 Substitui nos Charts: ${body.musicaSubstituida}` : '')
-    );
+    if (body.substituir === 'Sim') {
+      enviarMensagemTelegram(body.threadId,
+        `🔄 *Substituído com sucesso!*` +
+        `\n\n🎵 *${body.titulo}*` +
+        `\n💿 ${body.tipoSingle}` +
+        `\n👥 ${body.tipoMusica}: ${artistas}` +
+        `\n🔄 Substituiu nos Charts: ${body.musicaSubstituida}`
+      );
+    } else {
+      enviarMensagemTelegram(body.threadId,
+        `✅ *Registrado com sucesso!*` +
+        `\n\n🎵 *${body.titulo}*` +
+        `\n💿 ${body.tipoSingle}` +
+        `\n👥 ${body.tipoMusica}: ${artistas}`
+      );
+    }
   } catch (errTg) {
     Logger.log('Erro ao notificar no Telegram: ' + errTg.message);
   }
