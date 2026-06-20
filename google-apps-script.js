@@ -237,7 +237,26 @@ function processarGravacaoMusicaLocal(body) {
     }
   }
 
-  if (!encontrado) throw new Error('Tópico não encontrado na aba Músicas do banco de dados');
+  // Se não foi encontrado na aba temporária, adicionamos com resiliência
+  if (!encontrado) {
+    sheet.appendRow([
+      body.titulo, // Col A (Título)
+      body.threadId, // Col B (ThreadID)
+      body.tipoSingle || '', // Col C
+      body.tipoMusica || '', // Col D
+      '', // Col E (Notas comentários do Metacritic)
+      '', // Col F (Média de aprovação)
+      '', // Col G (ID do criador)
+      body.artistas[0] || '', // Col H (Artista Principal)
+      body.artistas[1] || '', // Col I
+      body.artistas[2] || '', // Col J
+      body.artistas[3] || '', // Col K
+      body.artistas[4] || '', // Col L
+      body.artistas[5] || '', // Col M
+      body.substituir === 'Sim' ? 'Sim' : '', // Col N (Substituir?)
+      body.musicaSubstituida || '' // Col O (Música substituída)
+    ]);
+  }
 
   // 2. Grava na aba principal "REGISTRO DE MÚSICA" e "EDIÇÃO CHARTS" na planilha EXTERNA
   try {
@@ -252,13 +271,17 @@ function processarGravacaoMusicaLocal(body) {
       artista3: body.artistas[2] || '',
       artista4: body.artistas[3] || '',
       artista5: body.artistas[4] || '',
-      artista6: body.artistas[5] || ''
+      artista6: body.artistas[5] || '',
+      threadId: body.threadId
     };
-    gravarRegistroFinal(cacheFake);
+    
+    // Grava de forma persistente nas planilhas externas do fluxo
+    gravarRegistroFinal(cacheFake); // Planilha de Charts (EDIÇÃO CHARTS)
+    gravarRegistroNaPlanilhaMusicaExterna(cacheFake); // Planilha de Registro de Músicas (colunas B a N)
   } catch (errExt) {
-    // Registra erro na planilha externa mas continua para mandar a mensagem do Telegram
+    // Registra o erro no debug mas prossegue com o bot/mensagem
     const log = ss.getSheetByName('LOG_DEBUG');
-    if (log) log.appendRow([new Date(), 'Erro gravarRegistroFinal planilha externa', errExt.message]);
+    if (log) log.appendRow([new Date(), 'Erro gravarRegistroFinal / gravarRegistroNaPlanilhaMusicaExterna', errExt.message]);
   }
 
   // 3. Deleta a mensagem do Bot no Telegram
@@ -485,6 +508,58 @@ function gravarRegistroFinal(cache) {
   sheet.getRange(primeiraVazia, 4).setValue(cache.tipoMusica || '');
   sheet.getRange(primeiraVazia, 6).setValue(artistas.join(', '));
   sheet.getRange(primeiraVazia, 7).setValue(1);
+}
+
+function gravarRegistroNaPlanilhaMusicaExterna(cache) {
+  try {
+    const targetSs = SpreadsheetApp.openById('1wNbtP78MrtrOc2Jb1ejXcHVjqndR2Vm4-3EIVqa8aOg');
+    let targetSheet = targetSs.getSheetByName('REGISTRO DE MÚSICA') || targetSs.getSheetByName('REGISTRO') || targetSs.getSheets()[0];
+    
+    const rawData = targetSheet.getDataRange().getValues();
+    const hoje = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy');
+    
+    let lRow = 0;
+    // Procuramos se já existe alguma linha correspondente para este Tópico (ThreadID na Coluna N)
+    // Se for uma substituição de música ou se re-registrar, atualizamos a linha existente
+    if (cache.threadId) {
+      for (let i = 1; i < rawData.length; i++) {
+        if (String(rawData[i][13]) === String(cache.threadId)) { // Coluna N [13]
+          lRow = i + 1;
+          break;
+        }
+      }
+    }
+    
+    // Se não encontrou linha de tópico anterior, procura pela primeira vazia na coluna B.
+    if (lRow === 0) {
+      for (let i = 1; i < rawData.length; i++) {
+        if (!rawData[i][1]) { // Coluna B [1] vazia
+          lRow = i + 1;
+          break;
+        }
+      }
+    }
+    
+    // Se mesmo assim não achou linha em branco, anexa no fim
+    if (lRow === 0) lRow = rawData.length + 1;
+    
+    // Escreve nas colunas B a N (Colunas 2 a 14)
+    targetSheet.getRange(lRow, 2).setValue(cache.titulo || ''); // B: Título da música
+    targetSheet.getRange(lRow, 3).setValue(cache.tipoSingle || ''); // C: Tipo do Single
+    targetSheet.getRange(lRow, 4).setValue(cache.tipoMusica || ''); // D: Formato do Artista (SOLO/PARCERIA/etc)
+    targetSheet.getRange(lRow, 5).setValue(cache.artista1 || ''); // E: Artista Principal (Artista 1)
+    targetSheet.getRange(lRow, 6).setValue(cache.artista2 || ''); // F: Colaborador 1 (Artista 2)
+    targetSheet.getRange(lRow, 7).setValue(cache.artista3 || ''); // G: Colaborador 2 (Artista 3)
+    targetSheet.getRange(lRow, 8).setValue(cache.artista4 || ''); // H: Colaborador 3 (Artista 4)
+    targetSheet.getRange(lRow, 9).setValue(cache.artista5 || ''); // I: Colaborador 4 (Artista 5)
+    targetSheet.getRange(lRow, 10).setValue(cache.artista6 || ''); // J: Colaborador 5 (Artista 6)
+    targetSheet.getRange(lRow, 11).setValue(cache.substituir === 'Sim' ? 'Sim' : 'Não'); // K: Substituir
+    targetSheet.getRange(lRow, 12).setValue(cache.musicaSubstituida || ''); // L: Música Substituída
+    targetSheet.getRange(lRow, 13).setValue(hoje); // M: Data do Registro
+    targetSheet.getRange(lRow, 14).setValue(cache.threadId || ''); // N: Topic (Thread) ID do Telegram
+  } catch (e) {
+    Logger.log('Erro gravarRegistroNaPlanilhaMusicaExterna: ' + e.message);
+  }
 }
 
 function obterListaArtistas() {
