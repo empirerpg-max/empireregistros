@@ -11,7 +11,11 @@
 body {
   background-color: #0b0e11;
   color: #f1f5f9;
-  font-family: "Paperlogy", var(--font-sans);
+}
+
+/* Force Paperlogy on everything except code/mono elements */
+*:not(code):not(pre):not([class*="font-mono"]):not([class*="text-mono"]) {
+  font-family: "Paperlogy", "Inter", sans-serif !important;
 }
 
 /* Fallback classes in case Tailwind fails to load in sandbox */
