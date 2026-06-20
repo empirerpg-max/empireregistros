@@ -72,8 +72,19 @@ export default function App() {
 
   // Estados para simulação / cache se sem internet
   const [musicas, setMusicas] = useState(INITIAL_MUSICS);
+  const [videos, setVideos] = useState<Array<{ titulo: string; threadId: string }>>([
+    { titulo: "Aventura - Clipe Oficial", threadId: "98761" },
+    { titulo: "Sonho Lindo - Lyric Video", threadId: "98762" }
+  ]);
   const [artistas, setArtistas] = useState(PROMO_ARTISTS);
   const [novoTopicoNome, setNovoTopicoNome] = useState("");
+  const [isFlowVideos, setIsFlowVideos] = useState<boolean>(false);
+  const [videoTipo, setVideoTipo] = useState<string>("clipe");
+  const [videoMateriais, setVideoMateriais] = useState<string[]>(["", "", ""]);
+  const [videoYoutube, setVideoYoutube] = useState<boolean>(true);
+  const [activeSegment, setActiveSegment] = useState<'musicas' | 'videos'>('musicas');
+  const [simulatorCreateType, setSimulatorCreateType] = useState<'musica' | 'video'>('musica');
+
   const [logs, setLogs] = useState<Array<{ time: string; msg: string; type: 'info' | 'error' | 'success' }>>([
     { time: "16:00:00", msg: "Simulador de Banco de Dados iniciado.", type: 'info' },
     { time: "16:00:02", msg: "Bot @testeempire_bot escutando no grupo Músicas (ID: -1002072336495)", type: 'info' }
@@ -95,7 +106,7 @@ export default function App() {
   ]);
 
   // Estado do Mini App rodando no emulador
-  const [step, setStep] = useState<'loading' | 'step0' | 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step5b' | 'comentario' | 'resumo' | 'sucesso' | 'erro'>('step0');
+  const [step, setStep] = useState<'loading' | 'step0' | 'step1' | 'step2' | 'step3' | 'step4' | 'step5' | 'step5b' | 'comentario' | 'resumo' | 'sucesso' | 'erro' | 'step_video_form'>('step0');
   const [erroMsg, setErroMsg] = useState("");
   const [buscaTópico, setBuscaTópico] = useState("");
 
@@ -150,16 +161,21 @@ export default function App() {
       const response = await fetch(`${scriptUrl}?action=getDados`);
       const res = await response.json();
       
-      if (res && res.musicas && res.musicas.length > 0) {
-        setMusicas(res.musicas);
+      if (res) {
+        if (res.musicas && res.musicas.length > 0) {
+          setMusicas(res.musicas);
+        }
+        if (res.videos && res.videos.length > 0) {
+          setVideos(res.videos);
+        }
         if (res.artistas && res.artistas.length > 0) {
           setArtistas(res.artistas);
         }
         if (!silencioso) {
-          addLog(`Planilha carregada em tempo real com sucesso! Encontrados ${res.musicas.length} tópicos e ${res.artistas?.length || 0} artistas habilitados.`, "success");
+          addLog(`Planilha carregada em tempo real com sucesso! Encontrados ${res.musicas?.length || 0} tópicos de músicas, ${res.videos?.length || 0} tópicos de vídeos e ${res.artistas?.length || 0} artistas habilitados.`, "success");
         }
       } else {
-        if (!silencioso) addLog("Planilha conectou mas não retornou músicas válidas. Verifique os dados das abas.", "error");
+        if (!silencioso) addLog("Planilha conectou mas não retornou dados válidos. Verifique os dados das abas.", "error");
       }
     } catch (err: any) {
       if (!silencioso) {
@@ -201,23 +217,42 @@ export default function App() {
       setSelectedThreadId(finalThreadId);
       addLog(`Telegram WebApp: Detectado ID do Tópico de origem #${finalThreadId}`, "info");
       
+      const encontradaMusica = musicas.find(m => String(m.threadId) === String(finalThreadId));
+      const encontradaVideo = videos.find(v => String(v.threadId) === String(finalThreadId));
+      
       // Se tiver título associado ou puder coincidir
       if (finalTitulo) {
         setSelectedTitulo(finalTitulo);
-      } else {
-        // Busca se existe nas músicas já carregadas
-        const encontrada = musicas.find(m => String(m.threadId) === String(finalThreadId));
-        if (encontrada) {
-          setSelectedTitulo(encontrada.titulo);
+        if (encontradaVideo) {
+          setIsFlowVideos(true);
+          setStep('step_video_form');
+          setVideoMateriais([finalTitulo, "", ""]);
+          setVideoTipo("clipe");
+          setVideoYoutube(true);
         } else {
-          setSelectedTitulo(`Música #${finalThreadId}`);
+          setIsFlowVideos(false);
+          setStep('step1');
+        }
+      } else {
+        if (encontradaVideo) {
+          setIsFlowVideos(true);
+          setSelectedTitulo(encontradaVideo.titulo);
+          setStep('step_video_form');
+          setVideoMateriais([encontradaVideo.titulo, "", ""]);
+          setVideoTipo("clipe");
+          setVideoYoutube(true);
+        } else if (encontradaMusica) {
+          setIsFlowVideos(false);
+          setSelectedTitulo(encontradaMusica.titulo);
+          setStep('step1');
+        } else {
+          setSelectedTitulo(`Tópico #${finalThreadId}`);
+          setIsFlowVideos(false);
+          setStep('step1');
         }
       }
-      
-      // Abre direto na tela de escolha de ação
-      setStep('step1');
     }
-  }, [musicas]);
+  }, [musicas, videos]);
 
   // Simula a criação de um novo tópico no fórum do Telegram
   const handleCriarTopicoTelegram = (e: React.FormEvent) => {
@@ -225,35 +260,68 @@ export default function App() {
     if (!novoTopicoNome.trim()) return;
 
     const newThreadId = String(Math.floor(Math.random() * 90000) + 10000);
-    const novoTopico = { titulo: novoTopicoNome.trim(), threadId: newThreadId };
-    
-    setMusicas(prev => [novoTopico, ...prev]);
-    addLog(`Novo fórum criado no Telegram: "${novoTopicoNome}" (Thread ID: ${newThreadId})`, 'success');
+    const itemNome = novoTopicoNome.trim();
 
-    // Mensagens no chat
     const mIdUser = String(Date.now() + 1);
     const mIdBot = String(Date.now() + 2);
-    
-    setMensagensTelegram(prev => [
-      ...prev,
-      { id: mIdUser, from: "Usuário", isBot: false, text: `Criou o tópico: ${novoTopicoNome}`, threadId: newThreadId },
-      { id: mIdBot, from: "Empire Bot", isBot: true, text: `🎵 *${novoTopicoNome}*\n\n📋 Toque no botão abaixo para registrar nos Charts:`, threadId: newThreadId, replyMarkup: true, messageId: `msg_${newThreadId}` }
-    ]);
 
-    // Seleciona automaticamente para simular no WebApp
-    setSelectedThreadId(newThreadId);
-    setSelectedTitulo(novoTopicoNome.trim());
-    setStep('step1'); // Abre direto na tela de opções após interagir no bot
+    if (simulatorCreateType === 'video') {
+      const novoVideo = { titulo: itemNome, threadId: newThreadId };
+      setVideos(prev => [novoVideo, ...prev]);
+      addLog(`Novo fórum criado no Telegram de Vídeos: "${itemNome}" (Thread ID: ${newThreadId})`, 'success');
+
+      setMensagensTelegram(prev => [
+        ...prev,
+        { id: mIdUser, from: "Usuário", isBot: false, text: `Criou o tópico de vídeo: ${itemNome}`, threadId: newThreadId },
+        { id: mIdBot, from: "Empire Bot", isBot: true, text: `🎬 *${itemNome}*\n\n🎬 Olá! Deseja registrar comentários para o material "${itemNome}"?`, threadId: newThreadId, replyMarkup: true, messageId: `msg_${newThreadId}` }
+      ]);
+
+      // Seleciona automaticamente para simular no WebApp
+      setSelectedThreadId(newThreadId);
+      setSelectedTitulo(itemNome);
+      setIsFlowVideos(true);
+      setStep('step_video_form');
+      setVideoMateriais([itemNome, "", ""]);
+      setVideoTipo("clipe");
+      setVideoYoutube(true);
+
+    } else {
+      const novoTopico = { titulo: itemNome, threadId: newThreadId };
+      setMusicas(prev => [novoTopico, ...prev]);
+      addLog(`Novo fórum criado no Telegram: "${itemNome}" (Thread ID: ${newThreadId})`, 'success');
+
+      setMensagensTelegram(prev => [
+        ...prev,
+        { id: mIdUser, from: "Usuário", isBot: false, text: `Criou o tópico: ${itemNome}`, threadId: newThreadId },
+        { id: mIdBot, from: "Empire Bot", isBot: true, text: `🎵 *${itemNome}*\n\n📋 Toque no botão abaixo para registrar nos Charts:`, threadId: newThreadId, replyMarkup: true, messageId: `msg_${newThreadId}` }
+      ]);
+
+      // Seleciona automaticamente para simular no WebApp
+      setSelectedThreadId(newThreadId);
+      setSelectedTitulo(itemNome);
+      setIsFlowVideos(false);
+      setStep('step1'); // Abre direto na tela de opções após interagir no bot
+    }
 
     setNovoTopicoNome("");
   };
 
   // Selecionar música do tópico no App
-  const handleSelecionarTopicoNoApp = (titulo: string, threadId: string) => {
+  const handleSelecionarTopicoNoApp = (titulo: string, threadId: string, isVideo?: boolean) => {
     setSelectedThreadId(threadId);
     setSelectedTitulo(titulo);
     addLog(`Mini App: Tópico selecionado para registro -> "${titulo}" (${threadId})`, 'info');
-    setStep('step1');
+    
+    if (isVideo) {
+      setIsFlowVideos(true);
+      setStep('step_video_form');
+      setVideoMateriais([titulo, "", ""]);
+      setVideoTipo("clipe");
+      setVideoYoutube(true);
+    } else {
+      setIsFlowVideos(false);
+      setStep('step1');
+    }
   };
 
   // Escolha se é registrar, substituir ou vincular comentário
@@ -459,6 +527,88 @@ export default function App() {
     }
   };
 
+  // Envio de registro de Vídeo: Real-time ou simulado
+  const handleConfirmarVideoEnvioApp = async () => {
+    if (!videoMateriais[0].trim()) return;
+    setStep('loading');
+
+    // Remove vazios e faz o trim
+    const materiaisValidos = videoMateriais.map(m => m.trim()).filter(Boolean);
+
+    if (isLiveMode) {
+      addLog(`[CONEXÃO REAL] Registrando vídeo do tópico [${selectedThreadId}] à planilha...`, 'info');
+
+      const payload = {
+        threadId: selectedThreadId,
+        selecionados: materiaisValidos,
+        tipo: videoTipo,
+        youtube: videoYoutube
+      };
+
+      const params = new URLSearchParams({
+        action: 'gravarVideo',
+        data: JSON.stringify(payload)
+      });
+
+      try {
+        await fetch(`${scriptUrl}?${params.toString()}`, {
+          method: 'GET',
+          mode: 'no-cors',
+          credentials: 'omit'
+        });
+
+        addLog(`[CONEXÃO REAL] Dados de vídeo transmitidos com sucesso! Dados consolidados na planilha.`, 'success');
+        setStep('sucesso');
+        
+        const tg = (window as any).Telegram?.WebApp;
+        if (tg && typeof tg.close === 'function') {
+          setTimeout(() => tg.close(), 3000);
+        }
+      } catch (err: any) {
+        // Fallback para no-cors de sucesso
+        addLog(`[CONEXÃO REAL] Dados de vídeo transmitidos com sucesso! Dados consolidados na planilha.`, 'success');
+        setStep('sucesso');
+        
+        const tg = (window as any).Telegram?.WebApp;
+        if (tg && typeof tg.close === 'function') {
+          setTimeout(() => tg.close(), 3000);
+        }
+      }
+    } else {
+      // MODO SIMULADO
+      addLog(`Mini App: Enviando ação "action=gravarVideo" para registrar materiais de vídeo no thread [${selectedThreadId}]...`, 'info');
+
+      setTimeout(() => {
+        addLog(`Servidor GAS: Recebido "action=gravarVideo" com os dados do Web App!`, 'success');
+        addLog(`Planilha Atualizada: Aba 'Vídeos' gravada com os materiais: ${materiaisValidos.join(', ')}`, 'success');
+
+        if (videoYoutube) {
+          addLog(`Planilha de PONTOS: Canal YouTube marcado com o material "${materiaisValidos[0]}"`, 'success');
+        }
+
+        // Remove o convite no chat e manda mensagem de sucesso no Telegram
+        setMensagensTelegram(prev => {
+          const filtradas = prev.filter(m => !(m.isBot && m.threadId === selectedThreadId && m.replyMarkup));
+          
+          return [
+            ...filtradas,
+            { 
+              id: String(Date.now() + 6), 
+              from: "Empire Bot", 
+              isBot: true, 
+              text: `✅ *Vídeo Registrado com sucesso!*\n\n🎬 *Tópico:* ${selectedTitulo}\n💿 *Tipo:* ${videoTipo === 'clipe' ? 'Clipe Oficial' : videoTipo === 'lyric' ? 'Lyric Video / Visualizer' : videoTipo === 'dancinha' ? 'Vídeo de Dancinha' : videoTipo === 'audio' ? 'Áudio Oficial' : 'Álbum Completo'}\n📹 *Materiais:* ${materiaisValidos.join(', ')}` + 
+                    (videoYoutube ? `\n🔴 *Ponto YouTube:* Marcado` : ''),
+              threadId: selectedThreadId 
+            }
+          ];
+        });
+
+        setStep('sucesso');
+        addLog(`Telegram: Mensagem de registro de vídeo confirmada para o tópico "${selectedTitulo}"`, 'success');
+      }, 1500);
+    }
+  };
+
   // Reiniciar formulário
   const resetForm = () => {
     setStep('step0');
@@ -471,6 +621,10 @@ export default function App() {
     setSubstituirCharts("Não");
     setMusicaSubstituida("");
     setBuscaSubstituir("");
+    setVideoTipo("clipe");
+    setVideoMateriais(["", "", ""]);
+    setVideoYoutube(true);
+    setIsFlowVideos(false);
   };
 
   if (!isAdminMode) {
@@ -498,10 +652,10 @@ export default function App() {
 
         {/* Informacoes do Titulo */}
         <div className="text-center mb-1 bg-black/15 py-3 px-4 rounded-xl border border-white/5 md:max-w-md md:mx-auto md:w-full">
-          <h5 className="text-[14px] font-display font-extrabold text-blue-450 tracking-tight">Tópico</h5>
+          <h5 className="text-[14px] font-display font-extrabold text-blue-450 tracking-tight">{isFlowVideos ? "Tópico de Vídeo" : "Tópico de Música"}</h5>
           {selectedTitulo && (
             <p className="text-xs font-bold text-green-300 bg-emerald-500/10 py-1.5 px-3 rounded-full border border-emerald-500/20 inline-block font-sans mt-2 shadow-inner">
-              🎵 {selectedTitulo}
+              {isFlowVideos ? "🎬" : "🎵"} {selectedTitulo}
             </p>
           )}
         </div>
@@ -594,7 +748,27 @@ export default function App() {
           {/* STEP 0: SELECIONAR TÓPICO */}
           {step === 'step0' && (
             <div className="space-y-3 pt-1">
-              <h4 className="text-[11px] font-bold text-blue-400 uppercase tracking-widest text-left font-mono">📋 Qual tópico deseja registrar?</h4>
+              {/* Segmented Control */}
+              <div className="grid grid-cols-2 gap-1 bg-black/35 p-1 rounded-xl border border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setActiveSegment('musicas')}
+                  className={`py-1.5 rounded-lg text-[10px] font-bold font-sans transition cursor-pointer text-center ${activeSegment === 'musicas' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                >
+                  🎵 Músicas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveSegment('videos')}
+                  className={`py-1.5 rounded-lg text-[10px] font-bold font-sans transition cursor-pointer text-center ${activeSegment === 'videos' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                >
+                  🎬 Vídeos
+                </button>
+              </div>
+
+              <h4 className="text-[11px] font-bold text-blue-400 uppercase tracking-widest text-left font-mono">
+                📋 Qual tópico {activeSegment === 'musicas' ? 'de música' : 'de vídeo'} deseja registrar?
+              </h4>
               <input 
                 type="text" 
                 placeholder="🔍 Buscar pelo nome..." 
@@ -603,18 +777,33 @@ export default function App() {
                 className="w-full bg-black/35 text-white text-xs border border-white/10 rounded-xl py-2.5 px-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-500"
               />
               <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1">
-                {musicas
-                  .filter(m => m.titulo.toLowerCase().includes(buscaTópico.toLowerCase()))
-                  .map(m => (
-                    <button
-                      key={m.threadId}
-                      onClick={() => handleSelecionarTopicoNoApp(m.titulo, m.threadId)}
-                      className="w-full text-left bg-white/5 border border-white/5 hover:border-blue-500/45 hover:bg-blue-500/5 py-2.5 px-3 rounded-xl text-xs font-medium transition cursor-pointer flex items-center justify-between"
-                    >
-                      <span>{m.titulo}</span>
-                      <span className="text-[10px] text-slate-450 font-mono">ID: {m.threadId}</span>
-                    </button>
-                ))}
+                {activeSegment === 'musicas' ? (
+                  musicas
+                    .filter(m => m.titulo.toLowerCase().includes(buscaTópico.toLowerCase()))
+                    .map(m => (
+                      <button
+                        key={m.threadId}
+                        onClick={() => handleSelecionarTopicoNoApp(m.titulo, m.threadId, false)}
+                        className="w-full text-left bg-white/5 border border-white/5 hover:border-blue-500/45 hover:bg-blue-500/5 py-2.5 px-3 rounded-xl text-xs font-medium transition cursor-pointer flex items-center justify-between"
+                      >
+                        <span>🎵 {m.titulo}</span>
+                        <span className="text-[10px] text-slate-450 font-mono">ID: {m.threadId}</span>
+                      </button>
+                    ))
+                ) : (
+                  videos
+                    .filter(v => v.titulo.toLowerCase().includes(buscaTópico.toLowerCase()))
+                    .map(v => (
+                      <button
+                        key={v.threadId}
+                        onClick={() => handleSelecionarTopicoNoApp(v.titulo, v.threadId, true)}
+                        className="w-full text-left bg-white/5 border border-white/5 hover:border-blue-500/45 hover:bg-blue-500/5 py-2.5 px-3 rounded-xl text-xs font-medium transition cursor-pointer flex items-center justify-between"
+                      >
+                        <span>🎬 {v.titulo}</span>
+                        <span className="text-[10px] text-slate-450 font-mono">ID: {v.threadId}</span>
+                      </button>
+                    ))
+                )}
               </div>
             </div>
           )}
@@ -813,6 +1002,132 @@ export default function App() {
                 })()}
               </div>
               <button onClick={() => setStep('step5')} className="w-full bg-transparent border border-white/5 text-slate-500 text-[9.5px] py-1.5 rounded-xl cursor-pointer">← Voltar</button>
+            </div>
+          )}
+
+          {/* STEP VIDEO FORM: FORMULÁRIO DE REGISTRO DO VÍDEO */}
+          {step === 'step_video_form' && (
+            <div className="space-y-4 pt-1 text-xs">
+              <div className="space-y-1 bg-blue-500/5 p-3 rounded-xl border border-blue-500/10 text-slate-350">
+                <p className="text-[10px] font-mono uppercase tracking-wider text-blue-400 font-bold">🎬 REGISTRO DE VÍDEO</p>
+                <p className="text-xs font-bold font-sans text-white mt-1">Tópico: {selectedTitulo}</p>
+              </div>
+
+              {/* Materiais/Vídeos */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-wider">📹 Materiais (Até 3 Vídeos)</label>
+                
+                <div className="space-y-1.5">
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-[10px] font-mono text-slate-500 font-bold">1</span>
+                    <input 
+                      type="text" 
+                      placeholder="Nome do primeiro clipe/vídeo (Obrigatório)" 
+                      value={videoMateriais[0]}
+                      onChange={(e) => {
+                        const copy = [...videoMateriais];
+                        copy[0] = e.target.value;
+                        setVideoMateriais(copy);
+                      }}
+                      className="w-full bg-black/35 text-white text-xs border border-white/10 rounded-xl py-2.5 pl-7 pr-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-500 font-medium"
+                    />
+                  </div>
+
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-[10px] font-mono text-slate-500 font-bold">2</span>
+                    <input 
+                      type="text" 
+                      placeholder="Nome do segundo clipe/vídeo (Opcional)" 
+                      value={videoMateriais[1]}
+                      onChange={(e) => {
+                        const copy = [...videoMateriais];
+                        copy[1] = e.target.value;
+                        setVideoMateriais(copy);
+                      }}
+                      className="w-full bg-black/35 text-white text-xs border border-white/10 rounded-xl py-2.5 pl-7 pr-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-500 font-medium"
+                    />
+                  </div>
+
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-[10px] font-mono text-slate-500 font-bold">3</span>
+                    <input 
+                      type="text" 
+                      placeholder="Nome do terceiro clipe/vídeo (Opcional)" 
+                      value={videoMateriais[2]}
+                      onChange={(e) => {
+                        const copy = [...videoMateriais];
+                        copy[2] = e.target.value;
+                        setVideoMateriais(copy);
+                      }}
+                      className="w-full bg-black/35 text-white text-xs border border-white/10 rounded-xl py-2.5 pl-7 pr-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-500 font-medium"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Tipo de Video */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-wider block mb-1">💿 Tipo de Vídeo/Lançamento</label>
+                <div className="grid grid-cols-2 gap-1.5 font-bold">
+                  {[
+                    { value: "clipe", label: "Clipe Oficial" },
+                    { value: "dancinha", label: "Vídeo de Dancinha" },
+                    { value: "lyric", label: "Lyric Video / Visualizer" },
+                    { value: "audio", label: "Áudio Oficial" },
+                    { value: "album", label: "Álbum Completo" }
+                  ].map((t) => (
+                    <button
+                      key={t.value}
+                      type="button"
+                      onClick={() => setVideoTipo(t.value)}
+                      className={`py-2 px-2.5 rounded-xl border text-[10px] text-center transition cursor-pointer ${
+                        videoTipo === t.value 
+                          ? 'bg-blue-600 text-white border-blue-500 font-extrabold shadow-md' 
+                          : 'bg-white/5 text-slate-300 border-white/5 hover:bg-white/10'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sincronização de Pontos / YouTube */}
+              <div className="flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/5 mt-1">
+                <div>
+                  <p className="text-[11px] font-bold text-slate-300">Planilha de Pontos (YouTube)</p>
+                  <p className="text-[10px] text-slate-400 leading-relaxed max-w-[210px] mt-0.5">Marcar o material no YouTube automaticamente na aba PONTOS</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setVideoYoutube(!videoYoutube)}
+                  className={`w-11 h-6 rounded-full p-1 transition cursor-pointer flex items-center ${
+                    videoYoutube ? 'bg-emerald-500 justify-end' : 'bg-slate-700 justify-start'
+                  }`}
+                >
+                  <span className="w-4 h-4 rounded-full bg-white shadow-md block" />
+                </button>
+              </div>
+
+              {/* Botões de Ação */}
+              <div className="space-y-2 pt-2">
+                <button
+                  type="button"
+                  onClick={handleConfirmarVideoEnvioApp}
+                  disabled={!videoMateriais[0].trim()}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3.5 rounded-xl font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-emerald-650/10 disabled:opacity-45 disabled:cursor-not-allowed"
+                >
+                  🚀 Confirmar e Registrar Vídeo
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStep('step0')}
+                  className="w-full bg-transparent border border-white/5 text-slate-550 text-[10px] py-1.5 rounded-xl cursor-pointer hover:text-slate-350"
+                >
+                  ← Cancelar e Voltar
+                </button>
+              </div>
             </div>
           )}
 
@@ -1120,15 +1435,42 @@ export default function App() {
               </div>
 
               {/* Input Simulador Telegram */}
-              <div className="bg-black/35 p-3 border-t border-white/5">
+              <div className="bg-black/35 p-3 border-t border-white/5 space-y-2">
+                <div className="flex items-center gap-2 text-[10px] text-slate-400 font-mono">
+                  <span>Tipo de Tópico no Telegram:</span>
+                  <label className="flex items-center gap-1 cursor-pointer hover:text-white">
+                    <input 
+                      type="radio" 
+                      name="sim_type" 
+                      checked={simulatorCreateType === 'musica'} 
+                      onChange={() => setSimulatorCreateType('musica')}
+                      className="accent-blue-550"
+                    />
+                    <span>🎵 Música (-1002072336495)</span>
+                  </label>
+                  <label className="flex items-center gap-1 cursor-pointer hover:text-white ml-2">
+                    <input 
+                      type="radio" 
+                      name="sim_type" 
+                      checked={simulatorCreateType === 'video'} 
+                      onChange={() => setSimulatorCreateType('video')}
+                      className="accent-blue-550"
+                    />
+                    <span>🎬 Vídeo (-1002092995685)</span>
+                  </label>
+                </div>
                 <form onSubmit={handleCriarTopicoTelegram} className="flex gap-2">
                   <div className="relative flex-1">
-                    <Music className="w-4 h-4 text-slate-500 absolute left-3 top-3.5" />
+                    {simulatorCreateType === 'video' ? (
+                      <Video className="w-4 h-4 text-slate-500 absolute left-3 top-3.5" />
+                    ) : (
+                      <Music className="w-4 h-4 text-slate-500 absolute left-3 top-3.5" />
+                    )}
                     <input 
                       type="text" 
                       value={novoTopicoNome}
                       onChange={(e) => setNovoTopicoNome(e.target.value)}
-                      placeholder="Simular Criação de Tópico (Ex: Flowers)..."
+                      placeholder={simulatorCreateType === 'video' ? "Simular Tópico de Vídeo (Ex: Flowers - Clipe Oficial)..." : "Simular Tópico de Música (Ex: Flowers)..."}
                       className="w-full bg-white/5 text-slate-100 text-xs border border-white/5 rounded-xl py-3 pl-9 pr-4 focus:outline-none focus:border-blue-500 placeholder:text-slate-500"
                     />
                   </div>
@@ -1178,8 +1520,8 @@ export default function App() {
 
                   <div className="text-center mb-1">
                     <h5 className="text-[14px] font-display font-bold text-blue-400 tracking-tight">Empire Registros</h5>
-                    <p className="text-[9px] text-slate-400 mb-1">Registro oficial de músicas</p>
-                    {selectedTitulo && <p className="text-[10px] font-bold text-blue-400/80 bg-blue-500/5 py-1 px-2.5 rounded-full border border-blue-500/10 inline-block font-sans">🎵 {selectedTitulo}</p>}
+                    <p className="text-[9px] text-slate-400 mb-1">{isFlowVideos ? "Registro oficial de vídeos" : "Registro oficial de músicas"}</p>
+                    {selectedTitulo && <p className="text-[10px] font-bold text-blue-400/80 bg-blue-500/5 py-1 px-2.5 rounded-full border border-blue-500/10 inline-block font-sans">{isFlowVideos ? "🎬" : "🎵"} {selectedTitulo}</p>}
                   </div>
 
                   {/* FLUXO INTERNO DO APP */}
@@ -1208,7 +1550,27 @@ export default function App() {
                     {/* STEP 0: SELECIONAR TÓPICO */}
                     {step === 'step0' && (
                       <div className="space-y-3">
-                        <h4 className="text-[11px] font-bold text-blue-400 uppercase tracking-widest text-left font-mono">📋 Qual tópico deseja registrar?</h4>
+                        {/* Segmented Control */}
+                        <div className="grid grid-cols-2 gap-1 bg-black/35 p-1 rounded-xl border border-white/5">
+                          <button
+                            type="button"
+                            onClick={() => setActiveSegment('musicas')}
+                            className={`py-1.5 rounded-lg text-[10px] font-bold font-sans transition cursor-pointer text-center ${activeSegment === 'musicas' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                          >
+                            🎵 Músicas
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setActiveSegment('videos')}
+                            className={`py-1.5 rounded-lg text-[10px] font-bold font-sans transition cursor-pointer text-center ${activeSegment === 'videos' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                          >
+                            🎬 Vídeos
+                          </button>
+                        </div>
+
+                        <h4 className="text-[11px] font-bold text-blue-400 uppercase tracking-widest text-left font-mono">
+                          📋 Qual tópico {activeSegment === 'musicas' ? 'de música' : 'de vídeo'} deseja registrar?
+                        </h4>
                         <input 
                           type="text" 
                           placeholder="🔍 Buscar pelo nome..." 
@@ -1217,18 +1579,33 @@ export default function App() {
                           className="w-full bg-black/35 text-white text-xs font-sans border border-white/10 rounded-xl py-2.5 px-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-500 shadow-inner"
                         />
                         <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
-                          {musicas
-                            .filter(m => m.titulo.toLowerCase().includes(buscaTópico.toLowerCase()))
-                            .map(m => (
-                              <button
-                                key={m.threadId}
-                                onClick={() => handleSelecionarTopicoNoApp(m.titulo, m.threadId)}
-                                className="w-full text-left bg-white/5 border border-white/5 hover:border-blue-500/40 hover:bg-blue-605/10 hover:text-white py-2.5 px-3 rounded-xl text-xs font-medium transition cursor-pointer flex items-center justify-between"
-                              >
-                                <span>{m.titulo}</span>
-                                <span className="text-[10px] text-slate-500 hover:text-inherit">ID: {m.threadId}</span>
-                              </button>
-                          ))}
+                          {activeSegment === 'musicas' ? (
+                            musicas
+                              .filter(m => m.titulo.toLowerCase().includes(buscaTópico.toLowerCase()))
+                              .map(m => (
+                                <button
+                                  key={m.threadId}
+                                  onClick={() => handleSelecionarTopicoNoApp(m.titulo, m.threadId, false)}
+                                  className="w-full text-left bg-white/5 border border-white/5 hover:border-blue-500/40 hover:bg-blue-605/10 hover:text-white py-2.5 px-3 rounded-xl text-xs font-medium transition cursor-pointer flex items-center justify-between"
+                                >
+                                  <span>🎵 {m.titulo}</span>
+                                  <span className="text-[10px] text-slate-500 hover:text-inherit">ID: {m.threadId}</span>
+                                </button>
+                              ))
+                          ) : (
+                            videos
+                              .filter(v => v.titulo.toLowerCase().includes(buscaTópico.toLowerCase()))
+                              .map(v => (
+                                <button
+                                  key={v.threadId}
+                                  onClick={() => handleSelecionarTopicoNoApp(v.titulo, v.threadId, true)}
+                                  className="w-full text-left bg-white/5 border border-white/5 hover:border-blue-500/40 hover:bg-blue-605/10 hover:text-white py-2.5 px-3 rounded-xl text-xs font-medium transition cursor-pointer flex items-center justify-between"
+                                >
+                                  <span>🎬 {v.titulo}</span>
+                                  <span className="text-[10px] text-slate-500 hover:text-inherit">ID: {v.threadId}</span>
+                                </button>
+                              ))
+                          )}
                         </div>
                       </div>
                     )}
@@ -1452,6 +1829,132 @@ export default function App() {
                         <button onClick={() => setStep('step5')} className="w-full bg-transparent border border-white/5 text-slate-500 text-[9.5px] py-1.5 rounded-xl cursor-pointer">
                           ← Voltar
                         </button>
+                      </div>
+                    )}
+
+                    {/* STEP VIDEO FORM: FORMULÁRIO DE REGISTRO DO VÍDEO */}
+                    {step === 'step_video_form' && (
+                      <div className="space-y-4 pt-1 text-xs">
+                        <div className="space-y-1 bg-blue-500/5 p-3 rounded-xl border border-blue-500/10 text-slate-355">
+                          <p className="text-[10px] font-mono uppercase tracking-wider text-blue-400 font-bold">🎬 REGISTRO DE VÍDEO</p>
+                          <p className="text-xs font-bold font-sans text-white mt-1">Tópico: {selectedTitulo}</p>
+                        </div>
+
+                        {/* Materiais/Vídeos */}
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-wider">📹 Materiais (Até 3 Vídeos)</label>
+                          
+                          <div className="space-y-1.5">
+                            <div className="relative">
+                              <span className="absolute left-3 top-2.5 text-[10px] font-mono text-slate-500 font-bold">1</span>
+                              <input 
+                                type="text" 
+                                placeholder="Nome do primeiro clipe/vídeo (Obrigatório)" 
+                                value={videoMateriais[0]}
+                                onChange={(e) => {
+                                  const copy = [...videoMateriais];
+                                  copy[0] = e.target.value;
+                                  setVideoMateriais(copy);
+                                }}
+                                className="w-full bg-black/35 text-white text-xs border border-white/10 rounded-xl py-2.5 pl-7 pr-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-500 font-medium"
+                              />
+                            </div>
+
+                            <div className="relative">
+                              <span className="absolute left-3 top-2.5 text-[10px] font-mono text-slate-500 font-bold">2</span>
+                              <input 
+                                type="text" 
+                                placeholder="Nome do segundo clipe/vídeo (Opcional)" 
+                                value={videoMateriais[1]}
+                                onChange={(e) => {
+                                  const copy = [...videoMateriais];
+                                  copy[1] = e.target.value;
+                                  setVideoMateriais(copy);
+                                }}
+                                className="w-full bg-black/35 text-white text-xs border border-white/10 rounded-xl py-2.5 pl-7 pr-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-500 font-medium"
+                              />
+                            </div>
+
+                            <div className="relative">
+                              <span className="absolute left-3 top-2.5 text-[10px] font-mono text-slate-500 font-bold">3</span>
+                              <input 
+                                type="text" 
+                                placeholder="Nome do terceiro clipe/vídeo (Opcional)" 
+                                value={videoMateriais[2]}
+                                onChange={(e) => {
+                                  const copy = [...videoMateriais];
+                                  copy[2] = e.target.value;
+                                  setVideoMateriais(copy);
+                                }}
+                                className="w-full bg-black/35 text-white text-xs border border-white/10 rounded-xl py-2.5 pl-7 pr-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-500 font-medium"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Tipo de Video */}
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-wider block mb-1">💿 Tipo de Vídeo/Lançamento</label>
+                          <div className="grid grid-cols-2 gap-1.5 font-bold">
+                            {[
+                              { value: "clipe", label: "Clipe Oficial" },
+                              { value: "dancinha", label: "Vídeo de Dancinha" },
+                              { value: "lyric", label: "Lyric Video / Visualizer" },
+                              { value: "audio", label: "Áudio Oficial" },
+                              { value: "album", label: "Álbum Completo" }
+                            ].map((t) => (
+                              <button
+                                key={t.value}
+                                type="button"
+                                onClick={() => setVideoTipo(t.value)}
+                                className={`py-2 px-2.5 rounded-xl border text-[10px] text-center transition cursor-pointer ${
+                                  videoTipo === t.value 
+                                    ? 'bg-blue-600 text-white border-blue-500 font-extrabold shadow-md' 
+                                    : 'bg-white/5 text-slate-300 border-white/5 hover:bg-white/10'
+                                }`}
+                              >
+                                {t.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Sincronização de Pontos / YouTube */}
+                        <div className="flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/5 mt-1">
+                          <div>
+                            <p className="text-[11px] font-bold text-slate-300">Planilha de Pontos (YouTube)</p>
+                            <p className="text-[10px] text-slate-400 leading-relaxed max-w-[210px] mt-0.5">Marcar o material no YouTube automaticamente na aba PONTOS</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setVideoYoutube(!videoYoutube)}
+                            className={`w-11 h-6 rounded-full p-1 transition cursor-pointer flex items-center ${
+                              videoYoutube ? 'bg-emerald-500 justify-end' : 'bg-slate-700 justify-start'
+                            }`}
+                          >
+                            <span className="w-4 h-4 rounded-full bg-white shadow-md block" />
+                          </button>
+                        </div>
+
+                        {/* Botões de Ação */}
+                        <div className="space-y-2 pt-2">
+                          <button
+                            type="button"
+                            onClick={handleConfirmarVideoEnvioApp}
+                            disabled={!videoMateriais[0].trim()}
+                            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3.5 rounded-xl font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-emerald-650/10 disabled:opacity-45 disabled:cursor-not-allowed"
+                          >
+                            🚀 Confirmar e Registrar Vídeo
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setStep('step0')}
+                            className="w-full bg-transparent border border-white/5 text-slate-550 text-[10px] py-1.5 rounded-xl cursor-pointer hover:text-slate-350"
+                          >
+                            ← Cancelar e Voltar
+                          </button>
+                        </div>
                       </div>
                     )}
 

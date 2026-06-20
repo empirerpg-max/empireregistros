@@ -196,11 +196,12 @@ function doGet(e) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const log = ss.getSheetByName('LOG_DEBUG') || ss.insertSheet('LOG_DEBUG');
 
-  // ROTA: Obter dados para o Mini App (tópicos de músicas + lista de artistas)
+  // ROTA: Obter dados para o Mini App (tópicos de músicas + lista de artistas + vídeos)
   if (action === 'getDados') {
     return ContentService.createTextOutput(JSON.stringify({
       ok:       true,
       musicas:  obterMusicasDaPlanilha(),
+      videos:   obterVideosDaPlanilha(),
       artistas: obterListaArtistas()
     })).setMimeType(ContentService.MimeType.JSON);
   }
@@ -215,6 +216,20 @@ function doGet(e) {
                            .setMimeType(ContentService.MimeType.JSON);
     } catch (err) {
       log.appendRow([new Date(), 'ERRO doGet gravarMusica', err.message]);
+      return ContentService.createTextOutput(JSON.stringify({ ok: false, error: err.message }))
+                           .setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
+  // ROTA GRAVAÇÃO DE VÍDEO (CORS-Safe via HTTP GET)
+  if (action === 'gravarVideo') {
+    try {
+      log.appendRow([new Date(), 'doGet action=gravarVideo recebido', e.parameter.data]);
+      const res = processarPayloadWebApp(e.parameter.data);
+      return ContentService.createTextOutput(JSON.stringify({ ok: true, msg: "Vídeo gravado", result: res }))
+                           .setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      log.appendRow([new Date(), 'ERRO doGet gravarVideo', err.message]);
       return ContentService.createTextOutput(JSON.stringify({ ok: false, error: err.message }))
                            .setMimeType(ContentService.MimeType.JSON);
     }
@@ -366,6 +381,18 @@ function processarGravacaoMusicaLocal(body) {
 
 function obterMusicasDaPlanilha() {
   const sheet = getAbaMusicas();
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  const data  = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+  const lista = [];
+  data.forEach(row => {
+    if (row[0] && row[1]) lista.push({ titulo: String(row[0]), threadId: String(row[1]) });
+  });
+  return lista;
+}
+
+function obterVideosDaPlanilha() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Vídeos') || ss.getSheetByName('Videos');
   if (!sheet || sheet.getLastRow() < 2) return [];
   const data  = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
   const lista = [];
