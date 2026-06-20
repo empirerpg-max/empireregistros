@@ -21,7 +21,8 @@ import {
   Info,
   ExternalLink,
   ChevronRight,
-  Database
+  Database,
+  Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -49,6 +50,8 @@ export default function App() {
   const [scriptUrl, setScriptUrl] = useState<string>(() => {
     return localStorage.getItem('empire_script_url') || 'https://script.google.com/macros/s/AKfycbzSLo0Fw5rVYVdztelVNImDQAc6itfoxmuSJVZ7TAUQDRFX9D71QdHBvBCefO-NJd9TgQ/exec';
   });
+
+  const [isConfigOpen, setIsConfigOpen] = useState<boolean>(false);
 
   const [isLoadingReal, setIsLoadingReal] = useState(false);
 
@@ -475,10 +478,18 @@ export default function App() {
               <h4 className="text-xs font-bold text-slate-200 leading-tight">Empire Registros</h4>
             </div>
           </div>
+          {/* Botão de Configurações */}
+          <button 
+            onClick={() => setIsConfigOpen(!isConfigOpen)} 
+            className={`p-1.5 hover:bg-white/10 rounded-lg transition cursor-pointer flex items-center justify-center ${isConfigOpen ? 'text-blue-400 bg-white/5' : 'text-slate-400'}`}
+            title="Configurações da URL do Google Script"
+          >
+            <Settings className="w-4 h-4 animate-spin-hover" />
+          </button>
         </div>
 
         {/* Informacoes do Titulo */}
-        <div className="text-center mb-1 bg-black/15 py-3 px-4 rounded-xl border border-white/5">
+        <div className="text-center mb-1 bg-black/15 py-3 px-4 rounded-xl border border-white/5 md:max-w-md md:mx-auto md:w-full">
           <h5 className="text-[14px] font-display font-extrabold text-blue-450 tracking-tight">Tópico</h5>
           {selectedTitulo && (
             <p className="text-xs font-bold text-green-300 bg-emerald-500/10 py-1.5 px-3 rounded-full border border-emerald-500/20 inline-block font-sans mt-2 shadow-inner">
@@ -489,24 +500,87 @@ export default function App() {
 
         {/* FLUXO INTERNO COMPACTO */}
         <div className="flex-1 overflow-y-auto space-y-3 mt-1.5 pr-1 max-w-md mx-auto w-full">
-          {/* STEP LOADING */}
-          {step === 'loading' && (
-            <div className="h-full py-16 flex flex-col items-center justify-center text-center space-y-3">
-              <RefreshCw className="w-8 h-8 text-blue-500 animate-spin animate-infinite" />
-              <p className="text-xs text-blue-400 font-medium">⏳ Gravando / Sincronizando com as abas do Sheets...</p>
-            </div>
-          )}
-
-          {/* STEP ERRO */}
-          {step === 'erro' && (
-            <div className="h-full py-12 flex flex-col items-center justify-center text-center space-y-4">
-              <AlertCircle className="w-10 h-10 text-rose-500" />
-              <div>
-                <h4 className="text-xs font-bold text-rose-400 font-sans">Falha no Registro</h4>
-                <p className="text-[11px] text-slate-400 mt-1 max-w-[285px] leading-relaxed select-text">{erroMsg}</p>
+          {isConfigOpen ? (
+            <div className="space-y-4 pt-1 bg-black/15 p-4 rounded-2xl border border-white/5 flex flex-col font-sans select-text">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-blue-405 font-sans uppercase tracking-wider flex items-center gap-1.5">
+                  <Settings className="w-3.5 h-3.5 text-blue-405" /> Configuração da API do Google
+                </h4>
+                <button onClick={() => setIsConfigOpen(false)} className="text-[10px] text-slate-500 hover:text-slate-300 cursor-pointer">Fechar</button>
               </div>
-              <button onClick={() => setStep('step1')} className="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs py-2.5 rounded-xl font-bold transition">Retornar às etapas</button>
+
+              <p className="text-[10.5px] text-slate-400 leading-relaxed font-sans select-text">
+                O mini app precisa se comunicar de forma direta com o seu script do Google Apps Script (GAS) para ler os tópicos e registrar os dados de forma integrada.
+              </p>
+
+              <div className="space-y-1.5">
+                <label className="text-[9.5px] uppercase font-bold text-slate-500 font-mono tracking-wider">URL do Apps Script (Web App):</label>
+                <input 
+                  type="text" 
+                  value={scriptUrl}
+                  onChange={(e) => {
+                    const val = e.target.value.trim();
+                    setScriptUrl(val);
+                    localStorage.setItem('empire_script_url', val);
+                  }}
+                  placeholder="https://script.google.com/macros/s/.../exec"
+                  className="w-full bg-black/35 text-white text-xs border border-white/10 rounded-xl py-2 px-3 focus:outline-none focus:border-blue-500 font-mono select-text"
+                />
+              </div>
+
+              <div className="bg-blue-500/5 p-3 rounded-xl border border-blue-500/10 space-y-2 select-text font-sans">
+                <h5 className="text-[10.5px] font-bold text-blue-400">💡 Como corrigir o erro CORS ("Failed to Fetch")?</h5>
+                <ol className="list-decimal list-inside text-[10px] text-slate-400 space-y-2 leading-relaxed">
+                  <li>No editor do seu <b>Google Apps Script</b>, clique no botão azul <b>Implantar</b> &gt; <b>Nova Implantação</b> (ou <i>Gerenciar Implantações</i>).</li>
+                  <li>Selecione o tipo de implantação como <b>Aplicativo Web</b>.</li>
+                  <li>Em <b>Executar como</b>, configure como <b>Eu (seu e-mail)</b>.</li>
+                  <li>Em <b>Quem tem acesso</b>, configure obrigatoriamente como <b>Qualquer pessoa</b> (*Anyone*).</li>
+                  <li>Clique em <b>Implantar</b>, autorize as permissões e <b>copie a URL do Web App gerada</b> (que termina com <code>/exec</code>).</li>
+                  <li>Cole a URL no campo acima, salve e tente registrar novamente!</li>
+                </ol>
+              </div>
+
+              <button 
+                onClick={() => setIsConfigOpen(false)} 
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2.5 rounded-xl transition cursor-pointer"
+              >
+                Salvar e Voltar ao Formulário
+              </button>
             </div>
+          ) : (
+            <>
+              {/* STEP LOADING */}
+              {step === 'loading' && (
+                <div className="h-full py-16 flex flex-col items-center justify-center text-center space-y-3">
+                  <RefreshCw className="w-8 h-8 text-blue-500 animate-spin animate-infinite" />
+                  <p className="text-xs text-blue-400 font-medium">⏳ Gravando / Sincronizando com as abas do Sheets...</p>
+                </div>
+              )}
+
+              {/* STEP ERRO */}
+              {step === 'erro' && (
+                <div className="h-full py-12 flex flex-col items-center justify-center text-center space-y-4 font-sans select-text">
+                  <AlertCircle className="w-10 h-10 text-rose-500" />
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-bold text-rose-400 font-sans">Falha no Registro</h4>
+                    <p className="text-[11px] text-slate-400 mt-1 max-w-[285px] leading-relaxed select-text">{erroMsg}</p>
+                    {erroMsg.includes('Failed to fetch') && (
+                      <div className="mt-3 bg-red-950/25 border border-red-500/20 rounded-xl p-3 text-[10px] text-slate-350 text-left space-y-1 select-text">
+                        <p className="font-bold text-red-400">⚠️ Erro de Rede ou Permissão (CORS):</p>
+                        <p>Isso ocorre porque o script do Google não autorizou o acesso público ou a URL é inválida.</p>
+                        <button 
+                          onClick={() => setIsConfigOpen(true)}
+                          className="mt-2 w-full bg-blue-600 hover:bg-blue-500 text-white text-[9.5px] py-1.5 rounded-lg transition font-semibold cursor-pointer"
+                        >
+                          ⚙️ Ir para Configurações do Google Script
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={() => setStep('step1')} className="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs py-2.5 rounded-xl font-bold transition cursor-pointer">Retornar às etapas</button>
+                </div>
+              )}
+            </>
           )}
 
           {/* STEP 0: SELECIONAR TÓPICO */}

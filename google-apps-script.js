@@ -43,6 +43,21 @@ const ID_PLAN_JOGADORES = EXT_JOGADORES_ID;
 const ID_PLAN_REGISTRO  = EXT_REGISTRO_COMENTARIOS_ID;
 
 
+// Função auxiliar de utilidade para ler/gravar de forma resiliente na planilha Músicas (Tracking)
+function getAbaMusicas() {
+  try {
+    return SpreadsheetApp.openById('1zMqnIntj5vAlU4_V_s0xf5suPTtFcl61W9DC9j8LFfM').getSheetByName('Músicas');
+  } catch (e) {
+    try {
+      return SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Músicas');
+    } catch (err) {
+      Logger.log('Erro ao obter a aba Músicas: ' + err.message);
+      return null;
+    }
+  }
+}
+
+
 // ==========================================
 // 9_webhook.gs — WEBHOOK PRINCIPAL (doPost / doGet)
 // ==========================================
@@ -118,11 +133,19 @@ function doPost(e) {
       cbData.startsWith('conf_')          || cbData.startsWith('meta_')
     ) {
       if (msg && msg.forum_topic_created) {
-        const abaMus    = ss.getSheetByName('Músicas');
+        const abaMus    = getAbaMusicas();
         const nome      = msg.forum_topic_created.name;
         const idTopico  = String(msg.message_id);
         const idCriador = String(msg.from ? msg.from.id : '');
-        abaMus.appendRow([nome, idTopico, idCriador]);
+        
+        // Escreve uma linha estruturada: Título em A, ID do tópico em B, ID do criador do tópico em C, ID do tópico em D como padrão, e ID do Criador na Col P (16) por segurança
+        const novaLinha = [];
+        novaLinha[0] = nome; // Col A (1)
+        novaLinha[1] = idTopico; // Col B (2)
+        novaLinha[2] = idCriador; // Col C (3) - ID do criador do tópico
+        novaLinha[3] = idTopico; // Col D (4) - Inicialmente o mesmo ID do tópico por padrão
+        novaLinha[15] = idCriador; // Col P (16) - Duplicado por segurança
+        abaMus.appendRow(novaLinha);
 
         const urlMiniAppSecuro = URL_MINI_APP;
 
@@ -140,8 +163,8 @@ function doPost(e) {
 
         log.appendRow([new Date(), 'resposta sendMessage Músicas', JSON.stringify(resBot)]);
 
-        if (resBot && resBot.ok && resBot.result) {
-          abaMus.getRange(abaMus.getLastRow(), 17).setValue(resBot.result.message_id);
+        if (resBot && resBot.ok && resBot.result && abaMus) {
+          abaMus.getRange(abaMus.getLastRow(), 17).setValue(resBot.result.message_id); // Col Q (17)
         }
       }
 
@@ -212,53 +235,22 @@ function doGet(e) {
 // Handler interno compartilhado para gravar músicas e acionar o Telegram
 function processarGravacaoMusicaLocal(body) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('Músicas');
-  if (!sheet) throw new Error("Aba 'Músicas' não encontrada");
-  const data = sheet.getDataRange().getValues();
-  let encontrado = false;
+  const sheet = getAbaMusicas();
   let msgIdBot   = '';
 
-  // 1. Grava na aba Músicas LOCAL 
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][1]) === String(body.threadId)) {
-      sheet.getRange(i + 1, 3).setValue(body.tipoSingle         || '');
-      sheet.getRange(i + 1, 4).setValue(body.tipoMusica         || '');
-      sheet.getRange(i + 1, 8).setValue(body.artistas[0]        || '');
-      sheet.getRange(i + 1, 9).setValue(body.artistas[1]        || '');
-      sheet.getRange(i + 1, 10).setValue(body.artistas[2]       || '');
-      sheet.getRange(i + 1, 11).setValue(body.artistas[3]       || '');
-      sheet.getRange(i + 1, 12).setValue(body.artistas[4]       || '');
-      sheet.getRange(i + 1, 13).setValue(body.artistas[5]       || '');
-      sheet.getRange(i + 1, 14).setValue(body.substituir === 'Sim' ? 'Sim' : '');
-      sheet.getRange(i + 1, 15).setValue(body.musicaSubstituida || '');
-      msgIdBot   = String(data[i][16] || ''); // col Q = messageId do bot
-      encontrado = true;
-      break;
+  // 1. Procura na aba Músicas LOCAL apenas para recuperar se há uma mensagem do bot para excluir.
+  // NÃO ALTERA OU ADICIONA NENHUMA CÉLULA OU LINHA NESSA ABA LOCAL DE TRACKING! Isso mantém todos os metadados intactos.
+  if (sheet) {
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][1]) === String(body.threadId)) {
+        msgIdBot = String(data[i][16] || ''); // col Q (17) -> índice 16 (messageId do bot)
+        break;
+      }
     }
   }
 
-  // Se não foi encontrado na aba temporária, adicionamos com resiliência
-  if (!encontrado) {
-    sheet.appendRow([
-      body.titulo, // Col A (Título)
-      body.threadId, // Col B (ThreadID)
-      body.tipoSingle || '', // Col C
-      body.tipoMusica || '', // Col D
-      '', // Col E (Notas comentários do Metacritic)
-      '', // Col F (Média de aprovação)
-      '', // Col G (ID do criador)
-      body.artistas[0] || '', // Col H (Artista Principal)
-      body.artistas[1] || '', // Col I
-      body.artistas[2] || '', // Col J
-      body.artistas[3] || '', // Col K
-      body.artistas[4] || '', // Col L
-      body.artistas[5] || '', // Col M
-      body.substituir === 'Sim' ? 'Sim' : '', // Col N (Substituir?)
-      body.musicaSubstituida || '' // Col O (Música substituída)
-    ]);
-  }
-
-  // 2. Grava na aba principal "REGISTRO DE MÚSICA" e "EDIÇÃO CHARTS" na planilha EXTERNA
+  // 2. Grava de forma persistente e estruturada nas planilhas EXTERNAS
   try {
     const cacheFake = {
       titulo: body.titulo,
@@ -275,18 +267,22 @@ function processarGravacaoMusicaLocal(body) {
       threadId: body.threadId
     };
     
-    // Grava de forma persistente nas planilhas externas do fluxo
+    // Grava de forma persistente nas planilhas externas do fluxo (incluindo REGISTRO DE MÚSICA colunas B-N)
     gravarRegistroFinal(cacheFake); // Planilha de Charts (EDIÇÃO CHARTS)
     gravarRegistroNaPlanilhaMusicaExterna(cacheFake); // Planilha de Registro de Músicas (colunas B a N)
   } catch (errExt) {
-    // Registra o erro no debug mas prossegue com o bot/mensagem
+    // Registra o erro no debug mas prossegue de forma limpa
     const log = ss.getSheetByName('LOG_DEBUG');
     if (log) log.appendRow([new Date(), 'Erro gravarRegistroFinal / gravarRegistroNaPlanilhaMusicaExterna', errExt.message]);
   }
 
-  // 3. Deleta a mensagem do Bot no Telegram
+  // 3. Deleta a mensagem do Bot no Telegram se o ID da mensagem foi encontrado
   if (msgIdBot) {
-    apiTelegram('deleteMessage', { chat_id: CHAT_ID, message_id: Number(msgIdBot) });
+    try {
+      apiTelegram('deleteMessage', { chat_id: CHAT_ID, message_id: Number(msgIdBot) });
+    } catch (errDel) {
+      Logger.log('Erro ao deletar mensagem Telegram: ' + errDel.message);
+    }
   }
 
   // 4. Manda a confirmação no Telegram
@@ -300,7 +296,7 @@ function processarGravacaoMusicaLocal(body) {
 }
 
 function obterMusicasDaPlanilha() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Músicas');
+  const sheet = getAbaMusicas();
   if (!sheet || sheet.getLastRow() < 2) return [];
   const data  = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
   const lista = [];
@@ -459,13 +455,37 @@ function obterListaRapida(nomeAba, numColuna) {
 
 function vincularComentario(nomeMusica, threadId) {
   try {
+    const abaMusicas = getAbaMusicas();
+    if (abaMusicas) {
+      const dataMusicas = abaMusicas.getDataRange().getValues();
+      let threadIdPai = '';
+      
+      // Busca pelo threadId da música pai (que tem o nome igual a nomeMusica na Coluna A)
+      for (let i = 1; i < dataMusicas.length; i++) {
+        if (String(dataMusicas[i][0]).trim().toLowerCase() === String(nomeMusica).trim().toLowerCase()) {
+          threadIdPai = String(dataMusicas[i][1]); // ThreadID na Coluna B
+          break;
+        }
+      }
+      
+      // Se achou o ID do tópico pai, atualiza a Coluna D (índice 3, coluna 4) da linha do tópico atual (threadId)
+      if (threadIdPai) {
+        for (let i = 1; i < dataMusicas.length; i++) {
+          if (String(dataMusicas[i][1]) === String(threadId)) {
+            abaMusicas.getRange(i + 1, 4).setValue(threadIdPai); // Coluna D substitui pelo ID do tópico pai
+            break;
+          }
+        }
+      }
+    }
+
     const sheet = SpreadsheetApp.openById(EXT_SPREADSHEET_ID).getSheetByName('EDIÇÃO CHARTS');
     const data = sheet.getDataRange().getValues();
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][1]).trim().toLowerCase() === String(nomeMusica).trim().toLowerCase()) {
-        const threadIdChatAtual = SpreadsheetApp.getActiveSpreadsheet()
-          .getSheetByName('Músicas').getDataRange().getValues()
-          .find(r => String(r[1]) === String(threadId));
+        const abaMusicasReal = getAbaMusicas();
+        const threadIdChatAtual = abaMusicasReal ? abaMusicasReal.getDataRange().getValues()
+          .find(r => String(r[1]) === String(threadId)) : null;
         if (threadIdChatAtual) sheet.getRange(i + 1, 5).setValue(threadIdChatAtual[0]);
         break;
       }
@@ -475,39 +495,64 @@ function vincularComentario(nomeMusica, threadId) {
 
 function gravarRegistroFinal(cache) {
   const sheet = SpreadsheetApp.openById(EXT_SPREADSHEET_ID).getSheetByName('EDIÇÃO CHARTS');
+  if (!sheet) throw new Error("Aba 'EDIÇÃO CHARTS' não encontrada na planilha externa");
   const data = sheet.getDataRange().getValues();
   const hoje = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy');
 
+  // Valores dos artistas inseridos (de 1 a 6)
+  const artista1 = cache.artista1 || '';
+  const artista2 = cache.artista2 || '';
+  const artista3 = cache.artista3 || '';
+  const artista4 = cache.artista4 || '';
+  const artista5 = cache.artista5 || '';
+  const artista6 = cache.artista6 || '';
+
+  // Caso seja uma substituição de música
   if (cache.substituir === 'Sim' && cache.musicaSubstituida) {
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][1]).trim().toLowerCase() === String(cache.musicaSubstituida).trim().toLowerCase()) {
-        sheet.getRange(i + 1, 1).setValue(hoje);
-        sheet.getRange(i + 1, 3).setValue(cache.tipoSingle || '');
-        sheet.getRange(i + 1, 4).setValue(cache.tipoMusica || '');
-        let artistas = [];
-        for (let n = 1; n <= 6; n++) { if (cache[`artista${n}`]) artistas.push(cache[`artista${n}`]); }
-        sheet.getRange(i + 1, 2).setValue(cache.titulo);
-        sheet.getRange(i + 1, 6).setValue(artistas.join(', '));
+        const linhaAlvo = i + 1;
+        sheet.getRange(linhaAlvo, 1).setValue(hoje); // Coluna A: data da atualização
+        sheet.getRange(linhaAlvo, 2).setValue(cache.titulo || ''); // Coluna B: nome da música
+        sheet.getRange(linhaAlvo, 3).setValue(cache.tipoSingle || ''); // Coluna C: tipo de single
+        sheet.getRange(linhaAlvo, 4).setValue(cache.tipoMusica || ''); // Coluna D: tipo de música
+        sheet.getRange(linhaAlvo, 5).setValue(''); // Coluna E: sem dado por enquanto
+        sheet.getRange(linhaAlvo, 6).setValue(1); // Coluna F: sempre o número 1
+        sheet.getRange(linhaAlvo, 7).setValue(''); // Coluna G: sem dado
+        sheet.getRange(linhaAlvo, 8).setValue(artista1); // Coluna H: sempre o artista principal
+        sheet.getRange(linhaAlvo, 9).setValue(artista2); // Coluna I
+        sheet.getRange(linhaAlvo, 10).setValue(artista3); // Coluna J
+        sheet.getRange(linhaAlvo, 11).setValue(artista4); // Coluna K
+        sheet.getRange(linhaAlvo, 12).setValue(artista5); // Coluna L
+        sheet.getRange(linhaAlvo, 13).setValue(artista6); // Coluna M
         return;
       }
     }
   }
 
+  // Caso normal (nova música): procura a primeira linha onde a Coluna A estiver vazia (sem nada nas células)
   let primeiraVazia = 0;
   for (let i = 1; i < data.length; i++) {
-    if (!data[i][1]) { primeiraVazia = i + 1; break; }
+    if (!data[i][0]) { // Coluna A vazia
+      primeiraVazia = i + 1;
+      break;
+    }
   }
   if (primeiraVazia === 0) primeiraVazia = data.length + 1;
 
-  let artistas = [];
-  for (let n = 1; n <= 6; n++) { if (cache[`artista${n}`]) artistas.push(cache[`artista${n}`]); }
-
-  sheet.getRange(primeiraVazia, 1).setValue(hoje);
-  sheet.getRange(primeiraVazia, 2).setValue(cache.titulo);
-  sheet.getRange(primeiraVazia, 3).setValue(cache.tipoSingle || '');
-  sheet.getRange(primeiraVazia, 4).setValue(cache.tipoMusica || '');
-  sheet.getRange(primeiraVazia, 6).setValue(artistas.join(', '));
-  sheet.getRange(primeiraVazia, 7).setValue(1);
+  sheet.getRange(primeiraVazia, 1).setValue(hoje); // Coluna A: data da atualização
+  sheet.getRange(primeiraVazia, 2).setValue(cache.titulo || ''); // Coluna B: nome da música (nome do tópico)
+  sheet.getRange(primeiraVazia, 3).setValue(cache.tipoSingle || ''); // Coluna C: tipo de single
+  sheet.getRange(primeiraVazia, 4).setValue(cache.tipoMusica || ''); // Coluna D: tipo de música
+  sheet.getRange(primeiraVazia, 5).setValue(''); // Coluna E: sem dado por enquanto
+  sheet.getRange(primeiraVazia, 6).setValue(1); // Coluna F: sempre o número 1
+  sheet.getRange(primeiraVazia, 7).setValue(''); // Coluna G: sem dado
+  sheet.getRange(primeiraVazia, 8).setValue(artista1); // Coluna H: sempre o artista principal
+  sheet.getRange(primeiraVazia, 9).setValue(artista2); // Coluna I
+  sheet.getRange(primeiraVazia, 10).setValue(artista3); // Coluna J
+  sheet.getRange(primeiraVazia, 11).setValue(artista4); // Coluna K
+  sheet.getRange(primeiraVazia, 12).setValue(artista5); // Coluna L
+  sheet.getRange(primeiraVazia, 13).setValue(artista6); // Coluna M
 }
 
 function gravarRegistroNaPlanilhaMusicaExterna(cache) {
@@ -634,15 +679,16 @@ function verificarComentarioMetacritic(msg) {
   const threadId = msg.message_thread_id;
   const userId   = msg.from.id;
   if (!threadId) return;
-  const ss    = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('Músicas');
+  const sheet = getAbaMusicas();
   if (!sheet) return;
   const data = sheet.getDataRange().getValues();
   let eCriador = false, topicoExiste = false;
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][1]) === String(threadId)) {
       topicoExiste = true;
-      if (String(data[i][2]) === String(userId)) eCriador = true;
+      // Compatibilidade reversa: Col P (índice 15) como principal, Col C (índice 2) como fallback
+      const idCriadorSalvo = data[i][15] ? String(data[i][15]) : String(data[i][2]);
+      if (idCriadorSalvo === String(userId)) eCriador = true;
       break;
     }
   }
@@ -682,7 +728,8 @@ function processarCallbackQuery(cb) {
 }
 
 function registrarNotaEMediaMusicas(threadId, nota, nomeOff) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Músicas');
+  const sheet = getAbaMusicas();
+  if (!sheet) return null;
   const data  = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][1]) === String(threadId)) {
