@@ -448,10 +448,12 @@ export default function App() {
     // Suporte a múltiplos nomes de variáveis comuns
     const threadIdVal = params.get('tgWebAppStartParam') || params.get('thread_id') || params.get('thread') || params.get('threadId');
     const tituloVal = params.get('title') || params.get('titulo');
+    const flowParamVal = params.get('flow') || params.get('tipo');
 
     const tg = (window as any).Telegram?.WebApp;
     let finalThreadId = threadIdVal || "";
     let finalTitulo = tituloVal ? decodeURIComponent(tituloVal) : "";
+    let explicitFlow = flowParamVal || "";
 
     if (tg) {
       tg.ready();
@@ -462,45 +464,59 @@ export default function App() {
     }
 
     if (finalThreadId) {
+      if (finalThreadId.includes("_album")) {
+        explicitFlow = "album";
+        finalThreadId = finalThreadId.replace("_album", "");
+      } else if (finalThreadId.includes("_video")) {
+        explicitFlow = "video";
+        finalThreadId = finalThreadId.replace("_video", "");
+      }
+
       setSelectedThreadId(finalThreadId);
-      addLog(`Telegram WebApp: Detectado ID do Tópico de origem #${finalThreadId}`, "info");
+      addLog(`Telegram WebApp: Detectado ID do Tópico de origem #${finalThreadId} com fluxo: ${explicitFlow || 'dinâmico'}`, "info");
       
       const encontradaMusica = musicas.find(m => String(m.threadId) === String(finalThreadId));
       const encontradaVideo = videos.find(v => String(v.threadId) === String(finalThreadId));
+      const encontradaAlbum = albuns.find(a => String(a.threadId) === String(finalThreadId));
       
-      // Se tiver título associado ou puder coincidir
-      if (finalTitulo) {
-        setSelectedTitulo(finalTitulo);
-        if (encontradaVideo) {
-          setIsFlowVideos(true);
-          setStep('step_video_form');
-          setVideoMateriais([finalTitulo, "", ""]);
-          setVideoTipo("clipe");
-          setVideoYoutube(true);
-        } else {
-          setIsFlowVideos(false);
-          setStep('step1');
-        }
+      const isAlbumFlow = explicitFlow === 'album' || explicitFlow === 'albuns' || encontradaAlbum !== undefined;
+      const isVideoFlow = !isAlbumFlow && (explicitFlow === 'video' || explicitFlow === 'videos' || encontradaVideo !== undefined);
+
+      if (isAlbumFlow) {
+        setIsFlowVideos(false);
+        setIsFlowAlbuns(true);
+        const autoTitulo = encontradaAlbum?.titulo || finalTitulo || `Álbum #${finalThreadId}`;
+        setSelectedTitulo(autoTitulo);
+        
+        // Inicializa o modal de álbum automaticamente
+        setAlbumModo('registro');
+        setAlbumSubstituido('');
+        setAlbumTipoLancamento('ALBUM');
+        setAlbumArtistaPrincipal('');
+        setAlbumQtdMusicas(0);
+        setAlbumMusicas([]);
+        setAlbumBuscaSubstituir('');
+        setAlbumBuscaArtista('');
+        setAlbumModalStep('modo');
+        setShowAlbumModal(true);
+      } else if (isVideoFlow) {
+        setIsFlowVideos(true);
+        setIsFlowAlbuns(false);
+        const autoTitulo = encontradaVideo?.titulo || finalTitulo || `Vídeo #${finalThreadId}`;
+        setSelectedTitulo(autoTitulo);
+        setStep('step_video_form');
+        setVideoMateriais([autoTitulo, "", ""]);
+        setVideoTipo("clipe");
+        setVideoYoutube(true);
       } else {
-        if (encontradaVideo) {
-          setIsFlowVideos(true);
-          setSelectedTitulo(encontradaVideo.titulo);
-          setStep('step_video_form');
-          setVideoMateriais([encontradaVideo.titulo, "", ""]);
-          setVideoTipo("clipe");
-          setVideoYoutube(true);
-        } else if (encontradaMusica) {
-          setIsFlowVideos(false);
-          setSelectedTitulo(encontradaMusica.titulo);
-          setStep('step1');
-        } else {
-          setSelectedTitulo(`Tópico #${finalThreadId}`);
-          setIsFlowVideos(false);
-          setStep('step1');
-        }
+        setIsFlowVideos(false);
+        setIsFlowAlbuns(false);
+        const autoTitulo = encontradaMusica?.titulo || finalTitulo || `Sencillo #${finalThreadId}`;
+        setSelectedTitulo(autoTitulo);
+        setStep('step1');
       }
     }
-  }, [musicas, videos]);
+  }, [musicas, videos, albuns]);
 
   // Simula a criação de um novo tópico no fórum do Telegram
   const handleCriarTopicoTelegram = (e: React.FormEvent) => {

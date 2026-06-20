@@ -1141,6 +1141,17 @@ function processarGravacaoAlbumLocal(body) {
       }
       
       enviarMensagemTelegramAlbuns(body.threadId, msg);
+
+      // Limpa o cache e apaga o botão do painel
+      try {
+        let cacheMsg = obterCache("appMsgAlb", body.threadId);
+        if (cacheMsg && cacheMsg.msgId) {
+          deletarMensagemTelegramAlbuns(cacheMsg.msgId);
+          limparCache("appMsgAlb", body.threadId);
+        }
+      } catch (errDel) {
+        if (log) log.appendRow([new Date(), 'Erro deletar appMsgAlb ao gravar', errDel.message]);
+      }
     }
     return "SUCESSO";
   } catch (err) {
@@ -1293,10 +1304,10 @@ function mt_join(atual, nome, valor) {
 
 function iniciarFluxoAlbuns(threadId, nomeTopico) {
   enviarMensagemTelegramAlbuns(threadId,
-    `📀 *Novo tópico detectado:* "${nomeTopico}"\n\nO que deseja fazer?`,
+    `📀 *Novo tópico de álbum detectado:* "${nomeTopico}"\n\nDeseja registrar as faixas e substituições deste álbum?`,
     { inline_keyboard: [
-      [{ text: '🆕 Registro', callback_data: 'alb_reg_sim' },
-       { text: '🔄 Substituição', callback_data: 'alb_sub_ini' }]
+      [{ text: '✅ Sim', callback_data: 'alb_reg_sim' },
+       { text: '❌ Não', callback_data: 'alb_cancelar' }]
     ]}
   );
 }
@@ -1309,68 +1320,80 @@ function processarCallbackQueryAlbuns(cb) {
   apiTelegram('answerCallbackQuery', { callback_query_id: cb.id });
 
   if (data.startsWith('alb_meta_')) { processarVotoMetacriticAlbum(data, threadId, userId, messageId); return; }
-  if (!data.startsWith('alb_pag_')) deletarMensagemTelegramAlbuns(messageId);
-
-  let cache = obterCache(userId, threadId) || { titulo: 'Álbum Desconhecido' };
-
+  
   if (data === 'alb_reg_sim') {
-    cache.modoAlbum = 'registro';
-    salvarCache(userId, threadId, cache);
-    perguntarTipoLancamento(threadId);
-
-  } else if (data === 'alb_sub_ini') {
-    cache.modoAlbum = 'substituicao';
-    salvarCache(userId, threadId, cache);
-    exibirListaAlbunsParaSubstituir(threadId);
-
-  } else if (data.startsWith('alb_sub_escolha_')) {
-    const idx = parseInt(data.replace('alb_sub_escolha_', ''));
-    cache.albumSubstituido = obterListaRapida('EDIÇÃO CHARTS ÁLBUMS', 4)[idx];
-    salvarCache(userId, threadId, cache);
-    perguntarArtistaPrincipalAlbum(threadId);
-
-  } else if (data.startsWith('alb_tipo_')) {
-    cache.tipoLancamento = data.replace('alb_tipo_', '');
-    salvarCache(userId, threadId, cache);
-    perguntarArtistaPrincipalAlbum(threadId);
-
-  } else if (data.startsWith('alb_art_')) {
-    cache.artistaPrincipal = data.replace('alb_art_', '');
-    salvarCache(userId, threadId, cache);
-    const r = enviarMensagemTelegramAlbuns(threadId, '🔢 *Quantas músicas tem o projeto?* (somente o número)');
-    if (r && r.ok) cache.idMsgQtd = r.result.message_id;
-    cache.aguardandoQtdMusicas = true;
-    salvarCache(userId, threadId, cache);
-
-  } else if (data.startsWith('alb_mus_tipo_')) {
-    const partes = data.split('_');
-    const tipoMusica = partes[3];
-    const indice = parseInt(partes[4]);
-    cache.musicas = cache.musicas || [];
-    if (!cache.musicas[indice]) cache.musicas[indice] = {};
-    cache.musicas[indice].tipo = tipoMusica;
-    salvarCache(userId, threadId, cache);
-    perguntarTipoMusica_Album(threadId, indice, cache);
-
-  } else if (data.startsWith('alb_mus_formato_')) {
-    const partes = data.split('_');
-    const formato = partes[3];
-    const indice = parseInt(partes[4]);
-    cache.musicas[indice].formato = formato;
-    salvarCache(userId, threadId, cache);
-    avancarParaProximaMusicaAlbum(threadId, userId, indice, cache);
-
-  } else if (data === 'alb_confirmar') {
-    try {
-      gravarRegistroFinalAlbum(cache, threadId);
-      limparCache(userId, threadId);
-    } catch(e) {
-      enviarMensagemTelegramAlbuns(threadId, `❌ *Erro ao gravar:* ${e.message}`);
-    }
+    deletarMensagemTelegramAlbuns(messageId);
+    const urlNativa = `${URL_MINI_APP}?startapp=${threadId}_album&threadId=${threadId}&flow=album`;
+    const tecladoApp = { inline_keyboard: [[ { text: "📋 Abrir Painel", url: urlNativa } ]] };
+    let res = enviarMensagemTelegramAlbuns(threadId, "⚙️ Toque abaixo para configurar as mídias, faixas e substituições na interface gráfica:", tecladoApp);
+    if (res && res.ok) salvarCache("appMsgAlb", threadId, { msgId: res.result.message_id });
 
   } else if (data === 'alb_cancelar') {
+    deletarMensagemTelegramAlbuns(messageId);
     limparCache(userId, threadId);
-    enviarMensagemTelegramAlbuns(threadId, '❌ Registro cancelado.');
+    let fAba = null;
+    try {
+      fAba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Bot_Cache');
+    } catch(e) {}
+    if (fAba) {
+      limparCache("appMsgAlb", threadId);
+    }
+
+  } else {
+    // Mantém compatibilidade com outros callbacks caso existam
+    if (!data.startsWith('alb_pag_')) deletarMensagemTelegramAlbuns(messageId);
+    let cache = obterCache(userId, threadId) || { titulo: 'Álbum Desconhecido' };
+
+    if (data === 'alb_sub_ini') {
+      cache.modoAlbum = 'substituicao';
+      salvarCache(userId, threadId, cache);
+      exibirListaAlbunsParaSubstituir(threadId);
+
+    } else if (data.startsWith('alb_sub_escolha_')) {
+      const idx = parseInt(data.replace('alb_sub_escolha_', ''));
+      cache.albumSubstituido = obterListaRapida('EDIÇÃO CHARTS ÁLBUMS', 4)[idx];
+      salvarCache(userId, threadId, cache);
+      perguntarArtistaPrincipalAlbum(threadId);
+
+    } else if (data.startsWith('alb_tipo_')) {
+      cache.tipoLancamento = data.replace('alb_tipo_', '');
+      salvarCache(userId, threadId, cache);
+      perguntarArtistaPrincipalAlbum(threadId);
+
+    } else if (data.startsWith('alb_art_')) {
+      cache.artistaPrincipal = data.replace('alb_art_', '');
+      salvarCache(userId, threadId, cache);
+      const r = enviarMensagemTelegramAlbuns(threadId, '🔢 *Quantas músicas tem o projeto?* (somente o número)');
+      if (r && r.ok) cache.idMsgQtd = r.result.message_id;
+      cache.aguardandoQtdMusicas = true;
+      salvarCache(userId, threadId, cache);
+
+    } else if (data.startsWith('alb_mus_tipo_')) {
+      const partes = data.split('_');
+      const tipoMusica = partes[3];
+      const indice = parseInt(partes[4]);
+      cache.musicas = cache.musicas || [];
+      if (!cache.musicas[indice]) cache.musicas[indice] = {};
+      cache.musicas[indice].tipo = tipoMusica;
+      salvarCache(userId, threadId, cache);
+      perguntarTipoMusica_Album(threadId, indice, cache);
+
+    } else if (data.startsWith('alb_mus_formato_')) {
+      const partes = data.split('_');
+      const formato = partes[3];
+      const indice = parseInt(partes[4]);
+      cache.musicas[indice].formato = formato;
+      salvarCache(userId, threadId, cache);
+      avancarParaProximaMusicaAlbum(threadId, userId, indice, cache);
+
+    } else if (data === 'alb_confirmar') {
+      try {
+        gravarRegistroFinalAlbum(cache, threadId);
+        limparCache(userId, threadId);
+      } catch(e) {
+        enviarMensagemTelegramAlbuns(threadId, `❌ *Erro ao gravar:* ${e.message}`);
+      }
+    }
   }
 }
 
