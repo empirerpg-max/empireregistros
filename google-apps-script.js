@@ -116,18 +116,59 @@ function doPost(e) {
     // ── ROTA: ÁLBUNS ────────────────────────────────────────────────────
     if (isFlowAlbun) {
       if (msg && msg.forum_topic_created) {
-        const abaAlbuns = ss.getSheetByName('Álbuns') || ss.insertSheet('Álbuns');
         const nome      = msg.forum_topic_created.name;
         const idTopico  = String(msg.message_id);
         const idCriador = String(msg.from ? msg.from.id : '');
-        abaAlbuns.appendRow([nome, idTopico, idCriador, '']);
-         salvarCache(idCriador, idTopico, { titulo: nome, threadId: idTopico });
+        
+        let abaAlbuns = null;
+        try {
+          abaAlbuns = ss.getSheetByName('Álbuns') || ss.getSheetByName('Albuns') || ss.insertSheet('Álbuns');
+        } catch (eSheet) {
+          log.appendRow([new Date(), 'Aviso: nao foi possivel obter/criar aba Albuns acentuada, tentando sem acento', eSheet.message]);
+          try {
+            abaAlbuns = ss.getSheetByName('Albuns') || ss.insertSheet('Albuns');
+          } catch (eSheet2) {
+            log.appendRow([new Date(), 'Erro grave: nao foi possivel acessar a aba Albuns de jeito nenhum', eSheet2.message]);
+          }
+        }
+        
+        if (abaAlbuns) {
+          try {
+            abaAlbuns.appendRow([nome, idTopico, idCriador, '']);
+          } catch(errRow) {
+            log.appendRow([new Date(), 'Erro ao dar appendRow em abaAlbuns', errRow.message]);
+          }
+        }
+        
+        try {
+          salvarCache(idCriador, idTopico, { titulo: nome, threadId: idTopico });
+        } catch (errCache) {
+          log.appendRow([new Date(), 'Erro de cache, continuando fluxo', errCache.message]);
+        }
+        
         iniciarFluxoAlbuns(idTopico, nome);
       }
-      if (cb) processarCallbackQueryAlbuns(cb);
+      if (cb) {
+        try {
+          processarCallbackQueryAlbuns(cb);
+        } catch (errCb) {
+          log.appendRow([new Date(), 'Erro processarCallbackQueryAlbuns', errCb.message]);
+        }
+      }
       if (msg && msg.text && !msg.forum_topic_created) {
-        const tratado = processarTextoPuroAlbuns(msg);
-        if (!tratado) verificarComentarioMetacriticAlbum(msg);
+        let tratado = false;
+        try {
+          tratado = processarTextoPuroAlbuns(msg);
+        } catch (errTrat) {
+          log.appendRow([new Date(), 'Erro processarTextoPuroAlbuns', errTrat.message]);
+        }
+        if (!tratado) {
+          try {
+            verificarComentarioMetacriticAlbum(msg);
+          } catch (errMeta) {
+            log.appendRow([new Date(), 'Erro verificarComentarioMetacriticAlbum', errMeta.message]);
+          }
+        }
       }
       return HtmlService.createHtmlOutput('OK');
     }
@@ -152,15 +193,46 @@ function doPost(e) {
     // ── ROTA: VÍDEOS ────────────────────────────────────────────────────
     if (isFlowVideo) {
       if (msg && msg.forum_topic_created) {
-        const abaVideos = ss.getSheetByName('Vídeos') || ss.getSheetByName('Videos');
         const nome      = msg.forum_topic_created.name;
         const idTopico  = String(msg.message_id);
         const idCriador = String(msg.from ? msg.from.id : '');
-        abaVideos.appendRow([nome, idTopico, idCriador]);
+        
+        let abaVideos = null;
+        try {
+          abaVideos = ss.getSheetByName('Vídeos') || ss.getSheetByName('Videos') || ss.insertSheet('Vídeos');
+        } catch (eSheet) {
+          log.appendRow([new Date(), 'Aviso: nao foi possivel obter/criar aba Videos acentuada, tentando sem acento', eSheet.message]);
+          try {
+            abaVideos = ss.getSheetByName('Videos') || ss.insertSheet('Videos');
+          } catch (eSheet2) {
+            log.appendRow([new Date(), 'Erro grave: nao foi possivel acessar a aba Videos de jeito nenhum', eSheet2.message]);
+          }
+        }
+        
+        if (abaVideos) {
+          try {
+            abaVideos.appendRow([nome, idTopico, idCriador]);
+          } catch (errRow) {
+            log.appendRow([new Date(), 'Erro ao dar appendRow em abaVideos', errRow.message]);
+          }
+        }
+        
         iniciarFluxoVideos(idTopico, nome);
       }
-      if (cb) processarCallbackQueryVideos(cb);
-      if (msg && msg.text && !msg.forum_topic_created) verificarComentarioTerceiros(msg);
+      if (cb) {
+        try {
+          processarCallbackQueryVideos(cb);
+        } catch (errCb) {
+          log.appendRow([new Date(), 'Erro processarCallbackQueryVideos', errCb.message]);
+        }
+      }
+      if (msg && msg.text && !msg.forum_topic_created) {
+        try {
+          verificarComentarioTerceiros(msg);
+        } catch (errCom) {
+          log.appendRow([new Date(), 'Erro verificarComentarioTerceiros', errCom.message]);
+        }
+      }
       return HtmlService.createHtmlOutput('OK');
     }
 
@@ -174,36 +246,51 @@ function doPost(e) {
       cbData.startsWith('conf_')          || cbData.startsWith('meta_')
     ) {
       if (msg && msg.forum_topic_created) {
-        const abaMus    = getAbaMusicas();
         const nome      = msg.forum_topic_created.name;
         const idTopico  = String(msg.message_id);
         const idCriador = String(msg.from ? msg.from.id : '');
         
-        // Escreve uma linha estruturada: Título em A, ID do tópico em B, ID do criador do tópico em C, ID do tópico em D como padrão, e Coluna E vazia para o message_id do convite
-        const novaLinha = [];
-        novaLinha[0] = nome; // Col A (1)
-        novaLinha[1] = idTopico; // Col B (2)
-        novaLinha[2] = idCriador; // Col C (3) - ID do criador do tópico
-        novaLinha[3] = idTopico; // Col D (4) - Inicialmente o mesmo ID do tópico por padrão
-        novaLinha[4] = ''; // Col E (5) - Reservado para o ID do convite do Telegram
+        let abaMus = null;
+        try {
+          abaMus = getAbaMusicas();
+        } catch (eSheet) {
+          log.appendRow([new Date(), 'Erro ao obter aba Musicas', eSheet.message]);
+        }
         
         if (abaMus) {
-          abaMus.appendRow(novaLinha);
+          try {
+            // Escreve uma linha estruturada: Título em A, ID do tópico em B, ID do criador do tópico em C, ID do tópico em D como padrão, e Coluna E vazia para o message_id do convite
+            const novaLinha = [];
+            novaLinha[0] = nome; // Col A (1)
+            novaLinha[1] = idTopico; // Col B (2)
+            novaLinha[2] = idCriador; // Col C (3) - ID do criador do tópico
+            novaLinha[3] = idTopico; // Col D (4) - Inicialmente o mesmo ID do tópico por padrão
+            novaLinha[4] = ''; // Col E (5) - Reservado para o ID do convite do Telegram
+            abaMus.appendRow(novaLinha);
+          } catch (errRow) {
+            log.appendRow([new Date(), 'Erro ao dar appendRow em abaMus', errRow.message]);
+          }
         }
 
         const urlMiniAppSecuro = URL_MINI_APP;
-
-        const resBot = apiTelegram('sendMessage', {
-          chat_id:           CHAT_ID,
-          message_thread_id: Number(idTopico),
-          text:              `🎵 *${nome}*\n\n📋 Toque no botão abaixo para registrar nos Charts:`,
-          parse_mode:        'Markdown',
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '📋 Registrar nos Charts', url: urlMiniAppSecuro }
-            ]]
-          }
-        });
+        const targetChatId = (typeof G_CHAT_ID_ATUAL !== 'undefined' && G_CHAT_ID_ATUAL) ? G_CHAT_ID_ATUAL : CHAT_ID;
+        
+        let resBot = null;
+        try {
+          resBot = apiTelegram('sendMessage', {
+            chat_id:           targetChatId,
+            message_thread_id: Number(idTopico),
+            text:              `🎵 *${nome}*\n\n📋 Toque no botão abaixo para registrar nos Charts:`,
+            parse_mode:        'Markdown',
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '📋 Registrar nos Charts', url: urlMiniAppSecuro }
+              ]]
+            }
+          });
+        } catch (errBot) {
+          log.appendRow([new Date(), 'Erro ao enviar sendMessage de Musicas', errBot.message]);
+        }
 
         // Grava o ID do convite retornado pelo bot na Coluna E da última linha (que acabamos de adicionar)
         if (resBot && resBot.ok && abaMus) {
@@ -215,11 +302,25 @@ function doPost(e) {
           }
         }
 
-        log.appendRow([new Date(), 'resposta sendMessage Músicas', JSON.stringify(resBot)]);
+        if (resBot) {
+          log.appendRow([new Date(), 'resposta sendMessage Músicas', JSON.stringify(resBot)]);
+        }
       }
 
-      if (cb) processarCallbackQuery(cb);
-      if (msg && msg.text && !msg.forum_topic_created) verificarComentarioMetacritic(msg);
+      if (cb) {
+        try {
+          processarCallbackQuery(cb);
+        } catch (errCb) {
+          log.appendRow([new Date(), 'Erro em processarCallbackQuery', errCb.message]);
+        }
+      }
+      if (msg && msg.text && !msg.forum_topic_created) {
+        try {
+          verificarComentarioMetacritic(msg);
+        } catch (errMeta) {
+          log.appendRow([new Date(), 'Erro em verificarComentarioMetacritic', errMeta.message]);
+        }
+      }
       return HtmlService.createHtmlOutput('OK');
     }
 
