@@ -138,12 +138,13 @@ function doPost(e) {
         const idTopico  = String(msg.message_id);
         const idCriador = String(msg.from ? msg.from.id : '');
         
-        // Escreve uma linha estruturada: Título em A, ID do tópico em B, ID do criador do tópico em C, ID do tópico em D como padrão
+        // Escreve uma linha estruturada: Título em A, ID do tópico em B, ID do criador do tópico em C, ID do tópico em D como padrão, e Coluna E vazia para o message_id do convite
         const novaLinha = [];
         novaLinha[0] = nome; // Col A (1)
         novaLinha[1] = idTopico; // Col B (2)
         novaLinha[2] = idCriador; // Col C (3) - ID do criador do tópico
         novaLinha[3] = idTopico; // Col D (4) - Inicialmente o mesmo ID do tópico por padrão
+        novaLinha[4] = ''; // Col E (5) - Reservado para o ID do convite do Telegram
         
         if (abaMus) {
           abaMus.appendRow(novaLinha);
@@ -162,6 +163,16 @@ function doPost(e) {
             ]]
           }
         });
+
+        // Grava o ID do convite retornado pelo bot na Coluna E da última linha (que acabamos de adicionar)
+        if (resBot && resBot.ok && abaMus) {
+          try {
+            const ultimaLinha = abaMus.getLastRow();
+            abaMus.getRange(ultimaLinha, 5).setValue(String(resBot.result.message_id));
+          } catch (eRange) {
+            log.appendRow([new Date(), 'Erro ao gravar ID do convite na coluna E', eRange.message]);
+          }
+        }
 
         log.appendRow([new Date(), 'resposta sendMessage Músicas', JSON.stringify(resBot)]);
       }
@@ -246,9 +257,9 @@ function processarGravacaoMusicaLocal(body) {
       artista1: artistasArray[0] || '',
       artista2: artistasArray[1] || '',
       artista3: artistasArray[2] || '',
-      artista4: artistasArray[3] || '',
-      artista5: artistasArray[4] || '',
-      artista6: artistasArray[5] || '',
+      artista4: artistesArray[3] || '',
+      artista5: artistesArray[4] || '',
+      artista6: artistesArray[5] || '',
       threadId: body.threadId
     };
     
@@ -259,6 +270,34 @@ function processarGravacaoMusicaLocal(body) {
     // Registra o erro no debug mas prossegue de forma limpa
     const log = ss.getSheetByName('LOG_DEBUG');
     if (log) log.appendRow([new Date(), 'Erro gravarRegistroFinal / gravarRegistroNaPlanilhaMusicaExterna', errExt.message]);
+  }
+
+  // 1.5 Deleta o botão/mensagem de convite original do bot Telegram se ela existir na Coluna E para este tópico
+  try {
+    const threadId = body.threadId;
+    if (threadId) {
+      const abaMus = getAbaMusicas();
+      if (abaMus) {
+        const dataMus = abaMus.getDataRange().getValues();
+        for (let i = 1; i < dataMus.length; i++) {
+          if (String(dataMus[i][1]) === String(threadId)) {
+            const msgIdConvite = dataMus[i][4]; // Coluna E (índice 4)
+            if (msgIdConvite) {
+              apiTelegram('deleteMessage', { 
+                chat_id: CHAT_ID, 
+                message_id: Number(msgIdConvite) 
+              });
+              // Limpa a Coluna E para marcar como deletado
+              abaMus.getRange(i + 1, 5).setValue('');
+            }
+            break;
+          }
+        }
+      }
+    }
+  } catch (errDel) {
+    const log = ss.getSheetByName('LOG_DEBUG');
+    if (log) log.appendRow([new Date(), 'Erro ao deletar convite anterior', errDel.message]);
   }
 
   // 2. Manda a confirmação no Telegram e envelopa em try-catch silencioso para evitar que falhas no Telegram bloqueiem o sucesso do formulário
@@ -738,6 +777,13 @@ function iniciarFluxoVideos(threadId, nomeTopico) {
   enviarMensagemTelegramVideos(threadId, txt, teclado);
 }
 
+// Auxiliar para editar vídeos
+function apiTelegramVideos(metodo, payload) {
+  const url = `https://api.telegram.org/bot${TOKEN_BOT_VIDEOS}/${metodo}`;
+  const options = { method: 'post', contentType: 'application/json', payload: JSON.stringify(payload), muteHttpExceptions: true };
+  const resposta = UrlFetchApp.fetch(url, options); return JSON.parse(resposta.getContentText());
+}
+
 function processarCallbackQueryVideos(cb) {
   const data = cb.data;
   const threadId = cb.message.message_thread_id;
@@ -756,7 +802,7 @@ function processarCallbackQueryVideos(cb) {
   if (data === "v_start_sim") {
     deletarMensagemTelegramVideos(messageId); 
     const urlNativa = `${URL_MINI_APP}?startapp=${threadId}&threadId=${threadId}`;
-    const tecladoApp = { inline_keyboard: [[ { text: "Abrir Painel", url: urlNativa } ]] };
+    const tecladoApp = { inline_keyboard: [[ { text: "Abrir Panel", url: urlNativa } ]] };
     let res = enviarMensagemTelegramVideos(threadId, "⚙️ Toque abaixo para configurar:", tecladoApp);
     if (res && res.ok) salvarCache("appMsg", threadId, { msgId: res.result.message_id });
   }
@@ -846,12 +892,6 @@ function marcarLancamentoYouTube(nomeMusica) {
   } catch(e) {}
 }
 
-function apiTelegramVideos(metodo, payload) {
-  const url = `https://api.telegram.org/bot${TOKEN_BOT_VIDEOS}/${metodo}`;
-  const options = { method: 'post', contentType: 'application/json', payload: JSON.stringify(payload), muteHttpExceptions: true };
-  const resposta = UrlFetchApp.fetch(url, options); return JSON.parse(resposta.getContentText());
-}
-
 function verificarComentarioTerceiros(msg) {
   const threadId = msg.message_thread_id;
   const userId = msg.from.id;
@@ -889,8 +929,8 @@ function processarCallbackLikes(data, threadId, userId, messageId) {
     const likesSorteados = Math.floor(Math.random() * (max - min + 1)) + min;
     registrarVotoLikeControle(userId, threadId);
     const nomeOff = obterNomeOff(userId);
-    const nomeTopico = registrarLikeEMedia(threadId, likesSorteados, nomeOff);
-    if (nomeTopico) registrarComentarioExterno(nomeOff, nomeTopico);
+    const xx = registrarLikeEMedia(threadId, likesSorteados, nomeOff);
+    if (xx) registrarComentarioExterno(nomeOff, xx);
   } catch (e) { Logger.log('Erro likes: ' + e.message); }
 }
 
@@ -901,7 +941,7 @@ function registrarLikeEMedia(threadId, likes, nomeOff) {
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][1]) === String(threadId)) {
       let atual = data[i][6] || '';
-      let nova = atual ? atual + ', ' + nomeOff + ': ' + likes : nomeOff + ': ' + likes;
+      let nova = atual ? mt_join(atual, nomeOff, likes) : nomeOff + ': ' + likes;
       let soma = 0, qtd = 0;
       nova.split(', ').forEach(e => {
         let p = e.split(': ');
@@ -912,6 +952,10 @@ function registrarLikeEMedia(threadId, likes, nomeOff) {
     }
   }
   return null;
+}
+
+function mt_join(atual, nome, valor) {
+  return atual + ', ' + nome + ': ' + valor;
 }
 
 
@@ -1017,7 +1061,7 @@ function perguntarArtistaPrincipalAlbum(threadId) {
   for (let i = 0; i < artsPag.length; i += 2) {
     let linha = [{ text: artsPag[i], callback_data: 'alb_art_' + artsPag[i].substring(0, 20) }];
     if (artsPag[i+1]) linha.push({ text: artsPag[i+1], callback_data: 'alb_art_' + artsPag[i+1].substring(0, 20) });
- botoes.push(linha);
+    botoes.push(linha);
   }
   if (lista.length > itensPorPag) botoes.push([{ text: 'Próxima ➡️', callback_data: 'alb_pag_art_1' }]);
   botoes.push([{ text: '✏️ Digitar manualmente', callback_data: 'alb_art_OUTRO' }]);
