@@ -10,6 +10,9 @@
 // BOT
 const BOT_TOKEN = '8662083027:AAE9xsTnQwk-WX9gbXWyPQngdiGomnTnSBk'; // Seu token do bot
 
+// Variável de contexto global para identificar dinamicamente grupos de teste alternativos recebidos via Webhook
+var G_CHAT_ID_ATUAL = null;
+
 // IDs dos grupos Telegram
 const CHAT_ID        = '-1002072336495';   // grupo de músicas
 const CHAT_ID_VIDEOS = '-1002092995685';   // grupo de vídeos
@@ -77,6 +80,9 @@ function doPost(e) {
     const idChatAtual = String(msg ? msg.chat.id : (cb ? cb.message.chat.id : ''));
     const cbData      = cb ? cb.data : '';
 
+    // Registra o ID do chat atual globalmente para canalizar as respostas do bot de forma dinâmica
+    G_CHAT_ID_ATUAL = idChatAtual;
+
     // ── MINI APP: sendData() legado ────────────────────────────────────────────
     if (webAppData) {
       log.appendRow([new Date(), 'web_app_data recebido no doPost', webAppData.data]);
@@ -89,8 +95,26 @@ function doPost(e) {
       return HtmlService.createHtmlOutput('OK');
     }
 
+    // Determina dinamicamente se a mensagem é do fluxo de Álbuns (pelo ID do Chat, pelas Callbacks ou analisando o título do Tópico criado)
+    let isFlowAlbun = (idChatAtual === CHAT_ID_ALBUNS || cbData.startsWith('alb_'));
+    if (!isFlowAlbun && msg && msg.forum_topic_created) {
+      const topTitle = (msg.forum_topic_created.name || "").toUpperCase();
+      if (
+        topTitle.includes("#EP") || 
+        topTitle.includes("#ALBUM") || 
+        topTitle.includes("#DELUXE") || 
+        topTitle.includes("EP |") || 
+        topTitle.includes("ALBUM |") || 
+        topTitle.includes("DELUXE |") || 
+        topTitle.includes("DLX |") || 
+        topTitle.includes("ALBUMS")
+      ) {
+        isFlowAlbun = true;
+      }
+    }
+
     // ── ROTA: ÁLBUNS ────────────────────────────────────────────────────
-    if (idChatAtual === CHAT_ID_ALBUNS || cbData.startsWith('alb_')) {
+    if (isFlowAlbun) {
       if (msg && msg.forum_topic_created) {
         const abaAlbuns = ss.getSheetByName('Álbuns') || ss.insertSheet('Álbuns');
         const nome      = msg.forum_topic_created.name;
@@ -108,8 +132,25 @@ function doPost(e) {
       return HtmlService.createHtmlOutput('OK');
     }
 
+    // Determina dinamicamente se a mensagem é do fluxo de Vídeos (pelo ID do Chat, Callbacks ou palavras chave de vídeo no título do Tópico)
+    let isFlowVideo = (idChatAtual === CHAT_ID_VIDEOS || cbData.startsWith('v_start_') || cbData === 'v_cancelar' || cbData.startsWith('v_like_'));
+    if (!isFlowVideo && msg && msg.forum_topic_created) {
+      const topTitle = (msg.forum_topic_created.name || "").toLowerCase();
+      if (
+        topTitle.includes("clipe") || 
+        topTitle.includes("lyric") || 
+        topTitle.includes("visualizer") || 
+        topTitle.includes("video") || 
+        topTitle.includes("vídeo") || 
+        topTitle.includes("audios") || 
+        topTitle.includes("dança")
+      ) {
+        isFlowVideo = true;
+      }
+    }
+
     // ── ROTA: VÍDEOS ────────────────────────────────────────────────────
-    if (idChatAtual === CHAT_ID_VIDEOS || cbData.startsWith('v_start_') || cbData === 'v_cancelar' || cbData.startsWith('v_like_')) {
+    if (isFlowVideo) {
       if (msg && msg.forum_topic_created) {
         const abaVideos = ss.getSheetByName('Vídeos') || ss.getSheetByName('Videos');
         const nome      = msg.forum_topic_created.name;
@@ -487,35 +528,41 @@ function apiTelegram(metodo, payload) {
 
 // Músicas
 function enviarMensagemTelegram(threadId, texto, teclado = null) {
-  let payload = { chat_id: CHAT_ID, message_thread_id: Number(threadId), text: texto, parse_mode: 'Markdown' };
+  const targetChatId = (typeof G_CHAT_ID_ATUAL !== 'undefined' && G_CHAT_ID_ATUAL) ? G_CHAT_ID_ATUAL : CHAT_ID;
+  let payload = { chat_id: targetChatId, message_thread_id: Number(threadId), text: texto, parse_mode: 'Markdown' };
   if (teclado) payload.reply_markup = teclado;
   return apiTelegram('sendMessage', payload);
 }
 function deletarMensagemTelegram(messageId) {
   if (!messageId) return;
-  apiTelegram('deleteMessage', { chat_id: CHAT_ID, message_id: messageId });
+  const targetChatId = (typeof G_CHAT_ID_ATUAL !== 'undefined' && G_CHAT_ID_ATUAL) ? G_CHAT_ID_ATUAL : CHAT_ID;
+  apiTelegram('deleteMessage', { chat_id: targetChatId, message_id: messageId });
 }
 
 // Vídeos
 function enviarMensagemTelegramVideos(threadId, texto, teclado = null) {
-  let payload = { chat_id: CHAT_ID_VIDEOS, message_thread_id: Number(threadId), text: texto, parse_mode: 'Markdown' };
+  const targetChatId = (typeof G_CHAT_ID_ATUAL !== 'undefined' && G_CHAT_ID_ATUAL) ? G_CHAT_ID_ATUAL : CHAT_ID_VIDEOS;
+  let payload = { chat_id: targetChatId, message_thread_id: Number(threadId), text: texto, parse_mode: 'Markdown' };
   if (teclado) payload.reply_markup = teclado;
   return apiTelegram('sendMessage', payload);
 }
 function deletarMensagemTelegramVideos(messageId) {
   if (!messageId) return;
-  apiTelegram('deleteMessage', { chat_id: CHAT_ID_VIDEOS, message_id: messageId });
+  const targetChatId = (typeof G_CHAT_ID_ATUAL !== 'undefined' && G_CHAT_ID_ATUAL) ? G_CHAT_ID_ATUAL : CHAT_ID_VIDEOS;
+  apiTelegram('deleteMessage', { chat_id: targetChatId, message_id: messageId });
 }
 
 // Álbuns
 function enviarMensagemTelegramAlbuns(threadId, texto, teclado = null) {
-  let payload = { chat_id: CHAT_ID_ALBUNS, message_thread_id: Number(threadId), text: texto, parse_mode: 'Markdown' };
+  const targetChatId = (typeof G_CHAT_ID_ATUAL !== 'undefined' && G_CHAT_ID_ATUAL) ? G_CHAT_ID_ATUAL : CHAT_ID_ALBUNS;
+  let payload = { chat_id: targetChatId, message_thread_id: Number(threadId), text: texto, parse_mode: 'Markdown' };
   if (teclado) payload.reply_markup = teclado;
   return apiTelegram('sendMessage', payload);
 }
 function deletarMensagemTelegramAlbuns(messageId) {
   if (!messageId) return;
-  apiTelegram('deleteMessage', { chat_id: CHAT_ID_ALBUNS, message_id: messageId });
+  const targetChatId = (typeof G_CHAT_ID_ATUAL !== 'undefined' && G_CHAT_ID_ATUAL) ? G_CHAT_ID_ATUAL : CHAT_ID_ALBUNS;
+  apiTelegram('deleteMessage', { chat_id: targetChatId, message_id: messageId });
 }
 
 
