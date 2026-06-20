@@ -138,14 +138,16 @@ function doPost(e) {
         const idTopico  = String(msg.message_id);
         const idCriador = String(msg.from ? msg.from.id : '');
         
-        // Escreve uma linha estruturada: Título em A, ID do tópico em B, ID do criador do tópico em C, ID do tópico em D como padrão, e ID do Criador na Col P (16) por segurança
+        // Escreve uma linha estruturada: Título em A, ID do tópico em B, ID do criador do tópico em C, ID do tópico em D como padrão
         const novaLinha = [];
         novaLinha[0] = nome; // Col A (1)
         novaLinha[1] = idTopico; // Col B (2)
         novaLinha[2] = idCriador; // Col C (3) - ID do criador do tópico
         novaLinha[3] = idTopico; // Col D (4) - Inicialmente o mesmo ID do tópico por padrão
-        novaLinha[15] = idCriador; // Col P (16) - Duplicado por segurança
-        abaMus.appendRow(novaLinha);
+        
+        if (abaMus) {
+          abaMus.appendRow(novaLinha);
+        }
 
         const urlMiniAppSecuro = URL_MINI_APP;
 
@@ -162,10 +164,6 @@ function doPost(e) {
         });
 
         log.appendRow([new Date(), 'resposta sendMessage Músicas', JSON.stringify(resBot)]);
-
-        if (resBot && resBot.ok && resBot.result && abaMus) {
-          abaMus.getRange(abaMus.getLastRow(), 17).setValue(resBot.result.message_id); // Col Q (17)
-        }
       }
 
       if (cb) processarCallbackQuery(cb);
@@ -235,35 +233,22 @@ function doGet(e) {
 // Handler interno compartilhado para gravar músicas e acionar o Telegram
 function processarGravacaoMusicaLocal(body) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = getAbaMusicas();
-  let msgIdBot   = '';
 
-  // 1. Procura na aba Músicas LOCAL apenas para recuperar se há uma mensagem do bot para excluir.
-  // NÃO ALTERA OU ADICIONA NENHUMA CÉLULA OU LINHA NESSA ABA LOCAL DE TRACKING! Isso mantém todos os metadados intactos.
-  if (sheet) {
-    const data = sheet.getDataRange().getValues();
-    for (let i = 1; i < data.length; i++) {
-      if (String(data[i][1]) === String(body.threadId)) {
-        msgIdBot = String(data[i][16] || ''); // col Q (17) -> índice 16 (messageId do bot)
-        break;
-      }
-    }
-  }
-
-  // 2. Grava de forma persistente e estruturada nas planilhas EXTERNAS
+  // 1. Grava de forma persistente e estruturada nas planilhas EXTERNAS
   try {
+    const artistasArray = (body.artistas && Array.isArray(body.artistas)) ? body.artistas : [];
     const cacheFake = {
       titulo: body.titulo,
       tipoSingle: body.tipoSingle,
       tipoMusica: body.tipoMusica,
       substituir: body.substituir,
       musicaSubstituida: body.musicaSubstituida,
-      artista1: body.artistas[0] || '',
-      artista2: body.artistas[1] || '',
-      artista3: body.artistas[2] || '',
-      artista4: body.artistas[3] || '',
-      artista5: body.artistas[4] || '',
-      artista6: body.artistas[5] || '',
+      artista1: artistasArray[0] || '',
+      artista2: artistasArray[1] || '',
+      artista3: artistasArray[2] || '',
+      artista4: artistasArray[3] || '',
+      artista5: artistasArray[4] || '',
+      artista6: artistasArray[5] || '',
       threadId: body.threadId
     };
     
@@ -276,21 +261,17 @@ function processarGravacaoMusicaLocal(body) {
     if (log) log.appendRow([new Date(), 'Erro gravarRegistroFinal / gravarRegistroNaPlanilhaMusicaExterna', errExt.message]);
   }
 
-  // 3. Deleta a mensagem do Bot no Telegram se o ID da mensagem foi encontrado
-  if (msgIdBot) {
-    try {
-      apiTelegram('deleteMessage', { chat_id: CHAT_ID, message_id: Number(msgIdBot) });
-    } catch (errDel) {
-      Logger.log('Erro ao deletar mensagem Telegram: ' + errDel.message);
-    }
+  // 2. Manda a confirmação no Telegram e envelopa em try-catch silencioso para evitar que falhas no Telegram bloqueiem o sucesso do formulário
+  try {
+    const artistasArray = (body.artistas && Array.isArray(body.artistas)) ? body.artistas : [];
+    const artistas = artistasArray.filter(a => a).join(', ');
+    enviarMensagemTelegram(body.threadId,
+      `✅ *Registrado com sucesso!*\n\n🎵 *${body.titulo}*\n💿 ${body.tipoSingle}\n👥 ${body.tipoMusica}: ${artistas}` +
+      (body.substituir === 'Sim' ? `\n🔄 Substitui: ${body.musicaSubstituida}` : '')
+    );
+  } catch (errTg) {
+    Logger.log('Erro ao notificar no Telegram: ' + errTg.message);
   }
-
-  // 4. Manda a confirmação no Telegram
-  const artistas = (body.artistas || []).filter(a => a).join(', ');
-  enviarMensagemTelegram(body.threadId,
-    `✅ *Registrado com sucesso!*\n\n🎵 *${body.titulo}*\n💿 ${body.tipoSingle}\n👥 ${body.tipoMusica}: ${artistas}` +
-    (body.substituir === 'Sim' ? `\n🔄 Substitui: ${body.musicaSubstituida}` : '')
-  );
 
   return { ok: true };
 }
@@ -728,23 +709,20 @@ function processarCallbackQuery(cb) {
 }
 
 function registrarNotaEMediaMusicas(threadId, nota, nomeOff) {
-  const sheet = getAbaMusicas();
-  if (!sheet) return null;
-  const data  = sheet.getDataRange().getValues();
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][1]) === String(threadId)) {
-      const notasAtuais = data[i][5] || '';
-      const novaString  = notasAtuais ? `${notasAtuais}, ${nomeOff}: ${nota}` : `${nomeOff}: ${nota}`;
-      const entradas    = novaString.split(', ');
-      let soma = 0, qtd = 0;
-      entradas.forEach(ent => {
-        const p = ent.split(': ');
-        if (p.length === 2 && !isNaN(parseInt(p[1]))) { soma += parseInt(p[1]); qtd++; }
-      });
-      sheet.getRange(i + 1, 6).setValue(novaString);
-      sheet.getRange(i + 1, 7).setValue(qtd > 0 ? Math.round(soma / qtd) : 0);
-      return data[i][0];
+  try {
+    const sheet = getAbaMusicas();
+    if (!sheet) return null;
+    const data  = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][1]) === String(threadId)) {
+        // Retorna apenas o nome original (Coluna A) para prosseguir com o fluxo de comentários na planilha externa,
+        // sem realizar nenhum preenchimento em colunas extras como F e G (6 e 7), garantindo que nada além de A até D 
+        // esteja preenchido na aba Músicas local.
+        return data[i][0];
+      }
     }
+  } catch (err) {
+    Logger.log('Erro em registrarNotaEMediaMusicas: ' + err.message);
   }
   return null;
 }
