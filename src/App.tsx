@@ -76,11 +76,15 @@ export default function App() {
     { titulo: "Aventura - Clipe Oficial", threadId: "98761" },
     { titulo: "Sonho Lindo - Lyric Video", threadId: "98762" }
   ]);
+  const [musicasEdicaoCharts, setMusicasEdicaoCharts] = useState<string[]>([
+    "Flowers", "Cruel Summer", "Espresso", "Lover", "Anti-Hero", "Stay", "Die With A Smile", "Aventura", "Sonho Lindo"
+  ]);
   const [artistas, setArtistas] = useState(PROMO_ARTISTS);
   const [novoTopicoNome, setNovoTopicoNome] = useState("");
   const [isFlowVideos, setIsFlowVideos] = useState<boolean>(false);
   const [videoTipo, setVideoTipo] = useState<string>("clipe");
   const [videoMateriais, setVideoMateriais] = useState<string[]>(["", "", ""]);
+  const [showDropdownIndex, setShowDropdownIndex] = useState<number | null>(null);
   const [videoYoutube, setVideoYoutube] = useState<boolean>(true);
   const [activeSegment, setActiveSegment] = useState<'musicas' | 'videos'>('musicas');
   const [simulatorCreateType, setSimulatorCreateType] = useState<'musica' | 'video'>('musica');
@@ -171,8 +175,11 @@ export default function App() {
         if (res.artistas && res.artistas.length > 0) {
           setArtistas(res.artistas);
         }
+        if (res.musicasEdicaoCharts && res.musicasEdicaoCharts.length > 0) {
+          setMusicasEdicaoCharts(res.musicasEdicaoCharts);
+        }
         if (!silencioso) {
-          addLog(`Planilha carregada em tempo real com sucesso! Encontrados ${res.musicas?.length || 0} tópicos de músicas, ${res.videos?.length || 0} tópicos de vídeos e ${res.artistas?.length || 0} artistas habilitados.`, "success");
+          addLog(`Planilha carregada em tempo real com sucesso! Encontrados ${res.musicas?.length || 0} tópicos de músicas, ${res.videos?.length || 0} tópicos de vídeos, ${res.musicasEdicaoCharts?.length || 0} faixas em EDIÇÃO CHARTS e ${res.artistas?.length || 0} artistas habilitados.`, "success");
         }
       } else {
         if (!silencioso) addLog("Planilha conectou mas não retornou dados válidos. Verifique os dados das abas.", "error");
@@ -1015,53 +1022,63 @@ export default function App() {
 
               {/* Materiais/Vídeos */}
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-wider">📹 Materiais (Até 3 Vídeos)</label>
+                <label className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-wider block">🎶 Músicas de EDIÇÃO CHARTS (Até 3)</label>
                 
                 <div className="space-y-1.5">
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-[10px] font-mono text-slate-500 font-bold">1</span>
-                    <input 
-                      type="text" 
-                      placeholder="Nome do primeiro clipe/vídeo (Obrigatório)" 
-                      value={videoMateriais[0]}
-                      onChange={(e) => {
-                        const copy = [...videoMateriais];
-                        copy[0] = e.target.value;
-                        setVideoMateriais(copy);
-                      }}
-                      className="w-full bg-black/35 text-white text-xs border border-white/10 rounded-xl py-2.5 pl-7 pr-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-500 font-medium"
-                    />
-                  </div>
+                  {[0, 1, 2].map((idx) => {
+                    const query = videoMateriais[idx] || "";
+                    const filtered = musicasEdicaoCharts.filter(m => 
+                      m.toLowerCase().includes(query.toLowerCase())
+                    );
+                    const isDropdownOpen = showDropdownIndex === idx;
 
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-[10px] font-mono text-slate-500 font-bold">2</span>
-                    <input 
-                      type="text" 
-                      placeholder="Nome do segundo clipe/vídeo (Opcional)" 
-                      value={videoMateriais[1]}
-                      onChange={(e) => {
-                        const copy = [...videoMateriais];
-                        copy[1] = e.target.value;
-                        setVideoMateriais(copy);
-                      }}
-                      className="w-full bg-black/35 text-white text-xs border border-white/10 rounded-xl py-2.5 pl-7 pr-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-500 font-medium"
-                    />
-                  </div>
-
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-[10px] font-mono text-slate-500 font-bold">3</span>
-                    <input 
-                      type="text" 
-                      placeholder="Nome do terceiro clipe/vídeo (Opcional)" 
-                      value={videoMateriais[2]}
-                      onChange={(e) => {
-                        const copy = [...videoMateriais];
-                        copy[2] = e.target.value;
-                        setVideoMateriais(copy);
-                      }}
-                      className="w-full bg-black/35 text-white text-xs border border-white/10 rounded-xl py-2.5 pl-7 pr-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-500 font-medium"
-                    />
-                  </div>
+                    return (
+                      <div className="relative" key={idx}>
+                        <span className="absolute left-3 top-2.5 text-[10px] font-mono text-slate-500 font-bold">{idx + 1}</span>
+                        <input 
+                          type="text" 
+                          placeholder={idx === 0 ? "🎵 Buscar primeira música (Obrigatório)" : idx === 1 ? "🎵 Buscar segunda música (Opcional)" : "🎵 Buscar terceira música (Opcional)"}
+                          value={videoMateriais[idx]}
+                          onFocus={() => setShowDropdownIndex(idx)}
+                          onBlur={() => setTimeout(() => setShowDropdownIndex(prev => prev === idx ? null : prev), 250)}
+                          onChange={(e) => {
+                            const copy = [...videoMateriais];
+                            copy[idx] = e.target.value;
+                            setVideoMateriais(copy);
+                            setShowDropdownIndex(idx);
+                          }}
+                          className="w-full bg-black/35 text-white text-xs border border-white/10 rounded-xl py-2.5 pl-7 pr-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-500 font-medium"
+                        />
+                        
+                        {isDropdownOpen && (
+                          <div className="absolute left-0 right-0 mt-1 bg-slate-900 border border-white/15 rounded-xl max-h-48 overflow-y-auto z-50 shadow-2xl p-1 divide-y divide-white/5 scrollbar-thin">
+                            {filtered.length === 0 ? (
+                              <div className="p-2.5 text-[10px] text-slate-500 italic text-center">
+                                Nenhuma música encontrada em EDIÇÃO CHARTS.
+                              </div>
+                            ) : (
+                              filtered.map((musica_item, i) => (
+                                <button
+                                  key={i}
+                                  type="button"
+                                  onMouseDown={() => {
+                                    const copy = [...videoMateriais];
+                                    copy[idx] = musica_item;
+                                    setVideoMateriais(copy);
+                                    setShowDropdownIndex(null);
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-[11px] text-slate-300 hover:bg-blue-600 hover:text-white rounded-lg transition cursor-pointer flex items-center gap-1.5"
+                                >
+                                  <span>🎵</span>
+                                  <span className="font-sans font-medium">{musica_item}</span>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1842,53 +1859,63 @@ export default function App() {
 
                         {/* Materiais/Vídeos */}
                         <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-wider">📹 Materiais (Até 3 Vídeos)</label>
+                          <label className="text-[10px] font-bold text-slate-400 font-mono uppercase tracking-wider block">🎶 Músicas de EDIÇÃO CHARTS (Até 3)</label>
                           
                           <div className="space-y-1.5">
-                            <div className="relative">
-                              <span className="absolute left-3 top-2.5 text-[10px] font-mono text-slate-500 font-bold">1</span>
-                              <input 
-                                type="text" 
-                                placeholder="Nome do primeiro clipe/vídeo (Obrigatório)" 
-                                value={videoMateriais[0]}
-                                onChange={(e) => {
-                                  const copy = [...videoMateriais];
-                                  copy[0] = e.target.value;
-                                  setVideoMateriais(copy);
-                                }}
-                                className="w-full bg-black/35 text-white text-xs border border-white/10 rounded-xl py-2.5 pl-7 pr-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-500 font-medium"
-                              />
-                            </div>
+                            {[0, 1, 2].map((idx) => {
+                              const query = videoMateriais[idx] || "";
+                              const filtered = musicasEdicaoCharts.filter(m => 
+                                m.toLowerCase().includes(query.toLowerCase())
+                              );
+                              const isDropdownOpen = showDropdownIndex === idx;
 
-                            <div className="relative">
-                              <span className="absolute left-3 top-2.5 text-[10px] font-mono text-slate-500 font-bold">2</span>
-                              <input 
-                                type="text" 
-                                placeholder="Nome do segundo clipe/vídeo (Opcional)" 
-                                value={videoMateriais[1]}
-                                onChange={(e) => {
-                                  const copy = [...videoMateriais];
-                                  copy[1] = e.target.value;
-                                  setVideoMateriais(copy);
-                                }}
-                                className="w-full bg-black/35 text-white text-xs border border-white/10 rounded-xl py-2.5 pl-7 pr-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-500 font-medium"
-                              />
-                            </div>
-
-                            <div className="relative">
-                              <span className="absolute left-3 top-2.5 text-[10px] font-mono text-slate-500 font-bold">3</span>
-                              <input 
-                                type="text" 
-                                placeholder="Nome do terceiro clipe/vídeo (Opcional)" 
-                                value={videoMateriais[2]}
-                                onChange={(e) => {
-                                  const copy = [...videoMateriais];
-                                  copy[2] = e.target.value;
-                                  setVideoMateriais(copy);
-                                }}
-                                className="w-full bg-black/35 text-white text-xs border border-white/10 rounded-xl py-2.5 pl-7 pr-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-500 font-medium"
-                              />
-                            </div>
+                              return (
+                                <div className="relative" key={idx}>
+                                  <span className="absolute left-3 top-2.5 text-[10px] font-mono text-slate-500 font-bold">{idx + 1}</span>
+                                  <input 
+                                    type="text" 
+                                    placeholder={idx === 0 ? "🎵 Buscar primeira música (Obrigatório)" : idx === 1 ? "🎵 Buscar segunda música (Opcional)" : "🎵 Buscar terceira música (Opcional)"}
+                                    value={videoMateriais[idx]}
+                                    onFocus={() => setShowDropdownIndex(idx)}
+                                    onBlur={() => setTimeout(() => setShowDropdownIndex(prev => prev === idx ? null : prev), 250)}
+                                    onChange={(e) => {
+                                      const copy = [...videoMateriais];
+                                      copy[idx] = e.target.value;
+                                      setVideoMateriais(copy);
+                                      setShowDropdownIndex(idx);
+                                    }}
+                                    className="w-full bg-black/35 text-white text-xs border border-white/10 rounded-xl py-2.5 pl-7 pr-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-500 font-medium"
+                                  />
+                                  
+                                  {isDropdownOpen && (
+                                    <div className="absolute left-0 right-0 mt-1 bg-slate-900 border border-white/15 rounded-xl max-h-48 overflow-y-auto z-50 shadow-2xl p-1 divide-y divide-white/5 scrollbar-thin">
+                                      {filtered.length === 0 ? (
+                                        <div className="p-2.5 text-[10px] text-slate-500 italic text-center">
+                                          Nenhuma música encontrada em EDIÇÃO CHARTS.
+                                        </div>
+                                      ) : (
+                                        filtered.map((musica_item, i) => (
+                                          <button
+                                            key={i}
+                                            type="button"
+                                            onMouseDown={() => {
+                                              const copy = [...videoMateriais];
+                                              copy[idx] = musica_item;
+                                              setVideoMateriais(copy);
+                                              setShowDropdownIndex(null);
+                                            }}
+                                            className="w-full text-left px-3 py-2 text-[11px] text-slate-300 hover:bg-blue-600 hover:text-white rounded-lg transition cursor-pointer flex items-center gap-1.5"
+                                          >
+                                            <span>🎵</span>
+                                            <span className="font-sans font-medium">{musica_item}</span>
+                                          </button>
+                                        ))
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
 

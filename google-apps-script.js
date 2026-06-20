@@ -202,7 +202,8 @@ function doGet(e) {
       ok:       true,
       musicas:  obterMusicasDaPlanilha(),
       videos:   obterVideosDaPlanilha(),
-      artistas: obterListaArtistas()
+      artistas: obterListaArtistas(),
+      musicasEdicaoCharts: obterMusicasEdicaoCharts()
     })).setMimeType(ContentService.MimeType.JSON);
   }
 
@@ -400,6 +401,25 @@ function obterVideosDaPlanilha() {
     if (row[0] && row[1]) lista.push({ titulo: String(row[0]), threadId: String(row[1]) });
   });
   return lista;
+}
+
+function obterMusicasEdicaoCharts() {
+  try {
+    const ssExterna = SpreadsheetApp.openById(EXT_SPREADSHEET_ID);
+    const sheet = ssExterna.getSheetByName('EDIÇÃO CHARTS') || ssExterna.getSheetByName('EDICAO CHARTS');
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    var values = sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).getValues();
+    var lista = [];
+    values.forEach(function(row) {
+      var val = String(row[0]).trim();
+      if (val && lista.indexOf(val) === -1) {
+        lista.push(val);
+      }
+    });
+    return lista;
+  } catch (err) {
+    return [];
+  }
 }
 
 // Configuração inicial do Webhook do Bot
