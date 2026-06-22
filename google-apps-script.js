@@ -1017,8 +1017,24 @@ function processarCallbackQuery(cb) {
       const notaSorteada = Math.floor(Math.random() * (max - min + 1)) + min;
       registrarVotoMetacriticControle(userId, threadId, notaSorteada);
       const nomeOff    = obterNomeOff(userId);
-      const nomeTopico = registrarNotaEMediaMusicas(threadId, notaSorteada, nomeOff);
-      if (nomeTopico) registrarComentarioExterno(nomeOff, nomeTopico);
+      const resReg = registrarNotaEMediaMusicas(threadId, notaSorteada, nomeOff);
+      if (resReg) {
+        registrarComentarioExterno(nomeOff, resReg.nomeTopico);
+        
+        // Envia mensagem informativa ao Telegram com todos os votos e média do Metacritic da música
+        let msg = `📊 *Metacritic de Música* — _${resReg.nomeTopico}_\n\n`;
+        msg += `👤 *${nomeOff}* avaliou com nota *${notaSorteada}*!\n\n`;
+        msg += `📋 *Notas Acumuladas:*\n`;
+        resReg.votosIndividuais.split(', ').forEach(v => {
+          const partesVoto = v.split(': ');
+          if (partesVoto.length === 2) {
+            msg += `• *${partesVoto[0]}*: nota *${partesVoto[1]}*\n`;
+          }
+        });
+        msg += `\n🎯 *Média Geral Metacritic:* *${resReg.media}*`;
+        
+        enviarMensagemTelegram(threadId, msg);
+      }
     }
   } catch(err) {
     if (log) log.appendRow([new Date(), 'ERRO callback música', err.message]);
@@ -1032,10 +1048,23 @@ function registrarNotaEMediaMusicas(threadId, nota, nomeOff) {
     const data  = sheet.getDataRange().getValues();
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][1]) === String(threadId)) {
-        // Retorna apenas o nome original (Coluna A) para prosseguir com o fluxo de comentários na planilha externa,
-        // sem realizar nenhum preenchimento em colunas extras como F e G (6 e 7), garantindo que nada além de A até D 
-        // esteja preenchido na aba Músicas local.
-        return data[i][0];
+        let atual = data[i][5] || ''; // Coluna F (índice 5) - Notas individuais de músicas
+        let nova = atual ? atual + ', ' + nomeOff + ': ' + nota : nomeOff + ': ' + nota;
+        let soma = 0, qtd = 0;
+        nova.split(', ').forEach(e => {
+          let p = e.split(': ');
+          if (p.length === 2 && !isNaN(parseInt(p[1]))) { soma += parseInt(p[1]); qtd++; }
+        });
+        const media = qtd > 0 ? Math.round(soma / qtd) : 0;
+        
+        sheet.getRange(i + 1, 6).setValue(nova); // Coluna F (índice 5) = Notas individuais
+        sheet.getRange(i + 1, 7).setValue(media); // Coluna G (índice 6) = Média final
+        
+        return {
+          nomeTopico: data[i][0],
+          votosIndividuais: nova,
+          media: media
+        };
       }
     }
   } catch (err) {
@@ -1250,7 +1279,7 @@ function verificarComentarioTerceiros(msg) {
   }
   if (!registrado || eCriador) return;
   if (jaVotouLike(userId, threadId)) return;
-  const txt = '👍 *Quantos likes este vídeo tem?*';
+  const txt = '👍 *Quantos likes este vídeo merece?*';
   const botoes = [
     [{ text: '40 a 65 mil', callback_data: 'v_like_40_65_' + threadId },
      { text: '66 a 80 mil', callback_data: 'v_like_66_80_' + threadId }],
@@ -1269,26 +1298,57 @@ function processarCallbackLikes(data, threadId, userId, messageId) {
     const likesSorteados = Math.floor(Math.random() * (max - min + 1)) + min;
     registrarVotoLikeControle(userId, threadId);
     const nomeOff = obterNomeOff(userId);
-    const xx = registrarLikeEMedia(threadId, likesSorteados, nomeOff);
-    if (xx) registrarComentarioExterno(nomeOff, xx);
+    const resReg = registrarLikeEMedia(threadId, likesSorteados, nomeOff);
+    if (resReg) {
+      registrarComentarioExterno(nomeOff, resReg.nomeTopico);
+      
+      // Envia uma mensagem informativa pro grupo de vídeos com todos os votos e média de likes
+      let msg = `👍 *Avaliação de Likes* — _${resReg.nomeTopico}_\n\n`;
+      msg += `👤 *${nomeOff}* deu *${(likesSorteados / 1000).toFixed(0)}k* likes!\n\n`;
+      msg += `📊 *Votos Acumulados:*\n`;
+      resReg.votosIndividuais.split(', ').forEach(v => {
+        const partesVoto = v.split(': ');
+        if (partesVoto.length === 2) {
+          const lk = parseInt(partesVoto[1]);
+          msg += `• *${partesVoto[0]}*: ${(lk / 1000).toFixed(0)}k likes\n`;
+        }
+      });
+      msg += `\n🎯 *Média Geral:* *${(resReg.media / 1000).toFixed(1)}k* likes`;
+      
+      enviarMensagemTelegramVideos(threadId, msg);
+    }
   } catch (e) { Logger.log('Erro likes: ' + e.message); }
 }
 
 function registrarLikeEMedia(threadId, likes, nomeOff) {
   const sheet = (SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Vídeos') ||
                  SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Videos'));
+  if (!sheet) return null;
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][1]) === String(threadId)) {
-      let atual = data[i][6] || '';
+      // Ler votos individuais na Coluna I (índice 8).
+      // Para compatibilidade reversa, se estiver vazia e a G (índice 6) contiver votos que não sejam número puro, usa ele.
+      let atual = data[i][8] || '';
+      if (!atual && data[i][6] && isNaN(Number(data[i][6]))) {
+        atual = data[i][6];
+      }
       let nova = atual ? mt_join(atual, nomeOff, likes) : nomeOff + ': ' + likes;
       let soma = 0, qtd = 0;
       nova.split(', ').forEach(e => {
         let p = e.split(': ');
         if (p.length === 2 && !isNaN(parseInt(p[1]))) { soma += parseInt(p[1]); qtd++; }
       });
-      sheet.getRange(i + 1, 7).setValue(qtd > 0 ? Math.round(soma / qtd) : 0);
-      return data[i][0];
+      const media = qtd > 0 ? Math.round(soma / qtd) : 0;
+      
+      sheet.getRange(i + 1, 9).setValue(nova); // Coluna I (índice 8) = Votos individuais
+      sheet.getRange(i + 1, 7).setValue(media); // Coluna G (índice 6) = Média final
+      
+      return {
+        nomeTopico: data[i][0],
+        votosIndividuais: nova,
+        media: media
+      };
     }
   }
   return null;
@@ -1571,8 +1631,24 @@ function processarVotoMetacriticAlbum(data, threadId, userId, messageId) {
     const nota = Math.floor(Math.random() * (max - min + 1)) + min;
     registrarVotoMetacriticAlbumControle(userId, threadId, nota);
     const nomeOff = obterNomeOff(userId);
-    const nomeTopico = registrarNotaEMediaAlbuns(threadId, nota, nomeOff);
-    if (nomeTopico) registrarComentarioExterno(nomeOff, nomeTopico);
+    const resReg = registrarNotaEMediaAlbuns(threadId, nota, nomeOff);
+    if (resReg) {
+      registrarComentarioExterno(nomeOff, resReg.nomeTopico);
+      
+      // Envia uma mensagem informativa pro grupo de álbuns com todos os votos e média do Metacritic
+      let msg = `📊 *Metacritic de Álbum* — _${resReg.nomeTopico}_\n\n`;
+      msg += `👤 *${nomeOff}* avaliou com nota *${nota}*!\n\n`;
+      msg += `📋 *Notas Acumuladas:*\n`;
+      resReg.votosIndividuais.split(', ').forEach(v => {
+        const partesVoto = v.split(': ');
+        if (partesVoto.length === 2) {
+          msg += `• *${partesVoto[0]}*: nota *${partesVoto[1]}*\n`;
+        }
+      });
+      msg += `\n🎯 *Média Geral Metacritic:* *${resReg.media}*`;
+      
+      enviarMensagemTelegramAlbuns(threadId, msg);
+    }
   } catch(e) {
     enviarMensagemTelegramAlbuns(threadId, `❌ *Erro interno:* ${e.message}`);
   }
@@ -1592,9 +1668,15 @@ function registrarNotaEMediaAlbuns(threadId, nota, nomeOff) {
         let p = e.split(': ');
         if (p.length === 2 && !isNaN(parseInt(p[1]))) { soma += parseInt(p[1]); qtd++; }
       });
+      const media = qtd > 0 ? Math.round(soma / qtd) : 0;
       sheet.getRange(i + 1, 5).setValue(nova);
-      sheet.getRange(i + 1, 6).setValue(qtd > 0 ? Math.round(soma / qtd) : 0);
-      return data[i][0];
+      sheet.getRange(i + 1, 6).setValue(media);
+      
+      return {
+        nomeTopico: data[i][0],
+        votosIndividuais: nova,
+        media: media
+      };
     }
   }
   return null;
