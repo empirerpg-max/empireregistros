@@ -272,7 +272,7 @@ function doPost(e) {
           }
         }
 
-        const urlGithubMusica = `https://empirerpg-max.github.io/empireregistros/musicas?threadId=${idTopico}&titulo=${encodeURIComponent(nome)}`;
+        const urlGithubMusica = `https://empirerpg-max.github.io/empireregistros/?flow=musica&threadId=${idTopico}&titulo=${encodeURIComponent(nome)}`;
         const targetChatId = (typeof G_CHAT_ID_ATUAL !== 'undefined' && G_CHAT_ID_ATUAL) ? G_CHAT_ID_ATUAL : CHAT_ID;
         
         let resBot = null;
@@ -1050,7 +1050,7 @@ function registrarNotaEMediaMusicas(threadId, nota, nomeOff) {
 // ==========================================
 
 function iniciarFluxoVideos(threadId, nomeTopico) {
-  const urlGithubVideo = `https://empirerpg-max.github.io/empireregistros/videos?threadId=${threadId}&titulo=${encodeURIComponent(nomeTopico)}`;
+  const urlGithubVideo = `https://empirerpg-max.github.io/empireregistros/?flow=video&threadId=${threadId}&titulo=${encodeURIComponent(nomeTopico)}`;
   const tecladoApp = { inline_keyboard: [[ { text: "🎬 Registrar no Painel", web_app: { url: urlGithubVideo } } ]] };
   let res = enviarMensagemTelegramVideos(threadId, `🎬 *${nomeTopico}*\n\n📋 Toque no botão abaixo para registrar os materiais e comentários deste vídeo diretamente no Painel Gráfico:`, tecladoApp);
   if (res && res.ok) salvarCache("appMsg", threadId, { msgId: res.result.message_id });
@@ -1080,7 +1080,7 @@ function processarCallbackQueryVideos(cb) {
 
   if (data === "v_start_sim") {
     deletarMensagemTelegramVideos(messageId); 
-    const urlGithubVideo = `https://empirerpg-max.github.io/empireregistros/videos?threadId=${threadId}`;
+    const urlGithubVideo = `https://empirerpg-max.github.io/empireregistros/?flow=video&threadId=${threadId}`;
     const tecladoApp = { inline_keyboard: [[ { text: "Abrir Painel", web_app: { url: urlGithubVideo } } ]] };
     let res = enviarMensagemTelegramVideos(threadId, "⚙️ Toque abaixo para configurar:", tecladoApp);
     if (res && res.ok) salvarCache("appMsg", threadId, { msgId: res.result.message_id });
@@ -1304,7 +1304,7 @@ function mt_join(atual, nome, valor) {
 // ==========================================
 
 function iniciarFluxoAlbuns(threadId, nomeTopico) {
-  const urlGithubAlbum = `https://empirerpg-max.github.io/empireregistros/albuns?threadId=${threadId}&titulo=${encodeURIComponent(nomeTopico)}`;
+  const urlGithubAlbum = `https://empirerpg-max.github.io/empireregistros/?flow=album&threadId=${threadId}&titulo=${encodeURIComponent(nomeTopico)}`;
   const tecladoApp = { inline_keyboard: [[ { text: "📀 Configurar Álbum", web_app: { url: urlGithubAlbum } } ]] };
   let res = enviarMensagemTelegramAlbuns(threadId, `📀 *${nomeTopico}*\n\n📋 Toque no botão abaixo para configurar e registrar as faixas, modos e substituições deste álbum diretamente no Painel Gráfico:`, tecladoApp);
   if (res && res.ok) salvarCache("appMsgAlb", threadId, { msgId: res.result.message_id });
@@ -1321,7 +1321,7 @@ function processarCallbackQueryAlbuns(cb) {
   
   if (data === 'alb_reg_sim') {
     deletarMensagemTelegramAlbuns(messageId);
-    const urlGithubAlbum = `https://empirerpg-max.github.io/empireregistros/albuns?threadId=${threadId}`;
+    const urlGithubAlbum = `https://empirerpg-max.github.io/empireregistros/?flow=album&threadId=${threadId}`;
     const tecladoApp = { inline_keyboard: [[ { text: "📋 Abrir Painel", web_app: { url: urlGithubAlbum } } ]] };
     let res = enviarMensagemTelegramAlbuns(threadId, "⚙️ Toque abaixo para configurar as mídias, faixas e substituições na interface gráfica:", tecladoApp);
     if (res && res.ok) salvarCache("appMsgAlb", threadId, { msgId: res.result.message_id });

@@ -496,6 +496,7 @@ export default function App() {
       if (isAlbumFlow) {
         setIsFlowVideos(false);
         setIsFlowAlbuns(true);
+        setActiveSegment('albuns');
         const autoTitulo = encontradaAlbum?.titulo || finalTitulo || `Álbum #${finalThreadId}`;
         setSelectedTitulo(autoTitulo);
         
@@ -513,6 +514,7 @@ export default function App() {
       } else if (isVideoFlow) {
         setIsFlowVideos(true);
         setIsFlowAlbuns(false);
+        setActiveSegment('videos');
         const autoTitulo = encontradaVideo?.titulo || finalTitulo || `Vídeo #${finalThreadId}`;
         setSelectedTitulo(autoTitulo);
         setStep('step_video_form');
@@ -522,6 +524,7 @@ export default function App() {
       } else {
         setIsFlowVideos(false);
         setIsFlowAlbuns(false);
+        setActiveSegment('musicas');
         const autoTitulo = encontradaMusica?.titulo || finalTitulo || `Sencillo #${finalThreadId}`;
         setSelectedTitulo(autoTitulo);
         setStep('step1');
