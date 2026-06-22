@@ -453,7 +453,18 @@ export default function App() {
     const tg = (window as any).Telegram?.WebApp;
     let finalThreadId = threadIdVal || "";
     let finalTitulo = tituloVal ? decodeURIComponent(tituloVal) : "";
+    
+    // Identificar fluxo do canal pela URL do GitHub (pathname / sub-caminhos ou hash)
+    const path = window.location.pathname.toLowerCase();
+    const hash = window.location.hash.toLowerCase();
     let explicitFlow = flowParamVal || "";
+    if (path.includes('/musicas') || path.includes('/musica') || hash.includes('/musicas') || hash.includes('/musica')) {
+      explicitFlow = 'musica';
+    } else if (path.includes('/videos') || path.includes('/video') || hash.includes('/videos') || hash.includes('/video')) {
+      explicitFlow = 'video';
+    } else if (path.includes('/albuns') || path.includes('/album') || hash.includes('/albuns') || hash.includes('/album')) {
+      explicitFlow = 'album';
+    }
 
     if (tg) {
       tg.ready();
