@@ -1053,6 +1053,491 @@ export default function App() {
     setIsFlowVideos(false);
   };
 
+  // Função para renderizar o modal de álbum em ambos os modos (Admin e Jogador)
+  const renderModalAlbumCompleto = () => {
+    return (
+      <AnimatePresence>
+        {showAlbumModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-lg bg-[#0e1318] border border-white/10 rounded-3xl overflow-hidden shadow-2xl flex flex-col my-8"
+            >
+              {/* Header */}
+              <div className="px-6 py-4 bg-black/40 border-b border-white/5 flex items-center justify-between font-sans">
+                <div className="flex items-center gap-2">
+                  <Disc className="w-5 h-5 text-blue-500 animate-spin" style={{ animationDuration: '6s' }} />
+                  <div className="text-left animate-fade-in">
+                    <h3 className="font-display font-bold text-slate-100 text-sm">Registro de Álbum</h3>
+                    <p className="text-[10px] text-slate-400 font-mono tracking-wide">{selectedTitulo}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowAlbumModal(false)}
+                  className="text-slate-400 hover:text-white text-xs bg-white/5 hover:bg-white/10 w-6 h-6 rounded-full flex items-center justify-center cursor-pointer transition"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Progress Indicator */}
+              <div className="bg-black/25 px-6 py-2 border-b border-white/5 flex items-center gap-1">
+                <div className={`h-1 flex-1 rounded transition-colors duration-300 ${albumModalStep === 'modo' ? 'bg-blue-600' : 'bg-blue-600/30'}`}></div>
+                <div className={`h-1 flex-1 rounded transition-colors duration-300 ${albumModalStep === 'dados' ? 'bg-blue-600' : albumModalStep === 'musicas_list' || albumModalStep === 'resumo' ? 'bg-blue-600' : 'bg-white/10'}`}></div>
+                <div className={`h-1 flex-1 rounded transition-colors duration-300 ${albumModalStep === 'musicas_list' ? 'bg-blue-600' : albumModalStep === 'resumo' ? 'bg-blue-600' : 'bg-white/10'}`}></div>
+                <div className={`h-1 flex-1 rounded transition-colors duration-300 ${albumModalStep === 'resumo' ? 'bg-blue-600' : 'bg-white/10'}`}></div>
+              </div>
+
+              {/* Step Contents */}
+              <div className="p-6 overflow-y-auto max-h-[60vh] space-y-4 font-sans text-left">
+                {albumModalStep === 'modo' && (
+                  <div className="space-y-4">
+                    <p className="text-xs text-slate-300 leading-relaxed text-left">
+                      Selecione o tipo de registro que deseja realizar para o álbum <strong className="text-blue-400">{selectedTitulo}</strong>:
+                    </p>
+                    <div className="grid grid-cols-1 gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAlbumModo('registro');
+                          setAlbumModalStep('dados');
+                        }}
+                        className="w-full text-left bg-white/5 hover:bg-blue-600/10 hover:border-blue-500/50 border border-white/5 p-4 rounded-2xl transition cursor-pointer flex items-start gap-3 group"
+                      >
+                        <div className="bg-blue-600/20 text-blue-400 p-2.5 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition">
+                          <Disc className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <span className="font-bold text-xs text-slate-200 block">🆕 Registrar Novo Álbum</span>
+                          <span className="text-[11px] text-slate-405 mt-0.5 block leading-relaxed">Insere o álbum e todas as suas músicas do zero no banco de dados.</span>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAlbumModo('substituicao');
+                          setAlbumModalStep('dados');
+                        }}
+                        className="w-full text-left bg-white/5 hover:bg-blue-600/10 hover:border-blue-500/50 border border-white/5 p-4 rounded-2xl transition cursor-pointer flex items-start gap-3 group"
+                      >
+                        <div className="bg-amber-600/20 text-amber-500 p-2.5 rounded-xl group-hover:bg-amber-600 group-hover:text-white transition">
+                          <RefreshCw className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <span className="font-bold text-xs text-slate-200 block">🔄 Substituir Álbum Existente</span>
+                          <span className="text-[11px] text-slate-405 mt-0.5 block leading-relaxed">Substitui o álbum anterior na folha principal de charts, associando faixas corretamente.</span>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {albumModalStep === 'dados' && (
+                  <div className="space-y-4">
+                    {/* albumSubstituido selector if in substituicao mode */}
+                    {albumModo === 'substituicao' && (
+                      <div className="space-y-1.5 relative">
+                        <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest block">📀 Selecione o Álbum a ser substituído:</label>
+                        <input
+                          type="text"
+                          placeholder="🔍 Digite para procurar o álbum..."
+                          value={albumBuscaSubstituir}
+                          onChange={(e) => {
+                            setAlbumBuscaSubstituir(e.target.value);
+                            setAlbumSubstituido(e.target.value);
+                          }}
+                          className="w-full bg-black/45 text-white text-xs border border-white/10 rounded-xl py-3 px-3.5 focus:outline-none focus:border-blue-500 placeholder:text-slate-600 font-sans shadow-inner"
+                        />
+                        {albumBuscaSubstituir.trim() && (
+                          <div className="absolute z-[60] w-full max-h-36 overflow-y-auto bg-slate-900 border border-white/10 rounded-xl mt-1 py-1 shadow-2xl">
+                            {albunsEdicaoCharts
+                              .filter(alb => alb.toLowerCase().includes(albumBuscaSubstituir.toLowerCase()))
+                              .map(alb => (
+                                <button
+                                  key={alb}
+                                  type="button"
+                                  onClick={() => {
+                                    setAlbumSubstituido(alb);
+                                    setAlbumBuscaSubstituir(alb);
+                                  }}
+                                  className="w-full text-left hover:bg-blue-600/25 px-3.5 py-2 text-xs text-slate-250 transition"
+                                >
+                                  📀 {alb}
+                                </button>
+                              ))}
+                          </div>
+                        )}
+                        {albumSubstituido && (
+                          <div className="text-[10px] text-emerald-400 flex items-center gap-1.5 mt-1 bg-emerald-950/20 border border-emerald-500/10 px-3 py-2 rounded-xl">
+                            <Check className="w-3.5 h-3.5" /> Substituir nos Charts: <strong className="text-emerald-300">{albumSubstituido}</strong>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* tipo de lancamento card selectors */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest block">💿 Tipo de Lançamento:</label>
+                      <div className="grid grid-cols-4 gap-2">
+                        {['ALBUM', 'EP', 'DELUXE', 'OUTROS'].map(tipo => (
+                          <button
+                            key={tipo}
+                            type="button"
+                            onClick={() => setAlbumTipoLancamento(tipo)}
+                            className={`py-2 px-1 text-center rounded-xl font-bold text-[10px] transition border cursor-pointer ${
+                              albumTipoLancamento === tipo 
+                                ? 'bg-blue-600 text-white border-blue-500' 
+                                : 'bg-white/5 text-slate-400 border-white/5 hover:bg-white/10'
+                            }`}
+                          >
+                            {tipo}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* artista principal searchable input */}
+                    <div className="space-y-1.5 relative">
+                      <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest block">👤 Artista Principal do projeto:</label>
+                      <input
+                        type="text"
+                        placeholder="🔍 Procure ou digite o nome do artista..."
+                        value={albumBuscaArtista}
+                        onChange={(e) => {
+                          setAlbumBuscaArtista(e.target.value);
+                          setAlbumArtistaPrincipal(e.target.value);
+                          setShowAlbumArtistaDropdown(true);
+                        }}
+                        onFocus={() => setShowAlbumArtistaDropdown(true)}
+                        className="w-full bg-black/45 text-white text-xs border border-white/10 rounded-xl py-3 px-3.5 focus:outline-none focus:border-blue-500 placeholder:text-slate-600 font-sans shadow-inner"
+                      />
+                      {showAlbumArtistaDropdown && albumBuscaArtista.trim() && (
+                        <div className="absolute z-[60] w-full max-h-36 overflow-y-auto bg-slate-900 border border-white/10 rounded-xl mt-1 py-1 shadow-2xl">
+                          {artistas
+                            .filter(art => art.toLowerCase().includes(albumBuscaArtista.toLowerCase()))
+                            .map(art => (
+                              <button
+                                key={art}
+                                type="button"
+                                onClick={() => {
+                                  setAlbumArtistaPrincipal(art);
+                                  setAlbumBuscaArtista(art);
+                                  setShowAlbumArtistaDropdown(false);
+                                }}
+                                className="w-full text-left hover:bg-blue-600/25 px-3.5 py-2 text-xs text-slate-250 transition cursor-pointer"
+                              >
+                                👤 {art}
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                      {albumArtistaPrincipal && (
+                        <div className="text-[10px] text-blue-400 flex items-center justify-between gap-1 mt-1 bg-blue-950/25 border border-blue-500/10 px-3 py-2 rounded-xl">
+                          <span className="flex items-center gap-1.5">
+                            <Check className="w-3.5 h-3.5 animate-pulse" /> Artista Atribuído: <strong className="text-blue-300">{albumArtistaPrincipal}</strong>
+                          </span>
+                          <button 
+                            type="button" 
+                            onClick={() => {
+                              setAlbumArtistaPrincipal("");
+                              setAlbumBuscaArtista("");
+                            }}
+                            className="text-[9px] underline text-blue-300 hover:text-white"
+                          >
+                            Limpar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* qtd de musicas - counter selector */}
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest block font-sans">🔢 Quantidade de Músicas no Álbum:</label>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const val = Math.max(0, albumQtdMusicas - 1);
+                            setAlbumQtdMusicas(val);
+                            setAlbumMusicas(prev => {
+                              const next = [...prev];
+                              if (next.length > val) return next.slice(0, val);
+                              while (next.length < val) {
+                                next.push({ nome: "", tipo: "TRACKLIST ALBUM", formato: "SOLO" });
+                              }
+                              return next;
+                            });
+                          }}
+                          className="bg-white/5 hover:bg-white/10 border border-white/10 w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white transition active:scale-95 cursor-pointer text-sm"
+                        >
+                          -
+                        </button>
+                        <input
+                          type="number"
+                          value={albumQtdMusicas || ''}
+                          onChange={(e) => {
+                            const val = Math.max(0, parseInt(e.target.value) || 0);
+                            setAlbumQtdMusicas(val);
+                            setAlbumMusicas(prev => {
+                              const next = [...prev];
+                              if (next.length > val) return next.slice(0, val);
+                              while (next.length < val) {
+                                next.push({ nome: "", tipo: "TRACKLIST ALBUM", formato: "SOLO" });
+                              }
+                              return next;
+                            });
+                          }}
+                          className="w-20 bg-black/45 text-white text-center font-bold rounded-xl py-2.5 border border-white/10 text-xs focus:outline-none focus:border-blue-500 font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const val = albumQtdMusicas + 1;
+                            setAlbumQtdMusicas(val);
+                            setAlbumMusicas(prev => {
+                              const next = [...prev];
+                              if (next.length > val) return next.slice(0, val);
+                              while (next.length < val) {
+                                next.push({ nome: "", tipo: "TRACKLIST ALBUM", formato: "SOLO" });
+                              }
+                              return next;
+                            });
+                          }}
+                          className="bg-white/5 hover:bg-white/10 border border-white/10 w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white transition active:scale-95 cursor-pointer text-sm"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {albumModalStep === 'musicas_list' && (
+                  <div className="space-y-4">
+                    <p className="text-[11px] text-slate-400 leading-relaxed text-left font-sans">
+                      💡 Toque nos campos para nomear cada música. Se a faixa já existe nos Charts, o sistema reconhecerá e buscará sugestões automaticamente possibilitando a vinculação!
+                    </p>
+                    <div className="space-y-3.5 max-h-[45vh] overflow-y-auto pr-1">
+                      {albumMusicas.map((m, idx) => (
+                        <div key={idx} className="bg-black/25 p-3.5 rounded-2xl border border-white/5 space-y-2.5 relative font-sans text-left">
+                          <div className="flex items-center justify-between text-[10px] font-mono font-bold text-slate-400">
+                             <span>MÚSICA #{idx + 1}</span>
+                             <span className={m.tipo === 'JÁ EXISTE' ? 'text-emerald-400' : 'text-blue-400'}>
+                               {m.tipo === 'JÁ EXISTE' ? '⭐ Existe nos Charts (Vincular)' : '✨ Nova Faixa'}
+                             </span>
+                          </div>
+                          
+                          {/* Nome Input */}
+                          <div className="relative select-text">
+                            <input
+                              type="text"
+                              value={m.nome}
+                              placeholder={`Título da Música ${idx + 1}...`}
+                              onChange={(e) => {
+                                const newName = e.target.value;
+                                setAlbumMusicas(prev => {
+                                  const next = [...prev];
+                                  next[idx].nome = newName;
+                                  const matchesExact = musicasEdicaoCharts.some(song => song.toLowerCase() === newName.trim().toLowerCase());
+                                  if (matchesExact) {
+                                    next[idx].tipo = "JÁ EXISTE";
+                                  } else {
+                                    next[idx].tipo = "TRACKLIST ALBUM";
+                                  }
+                                  return next;
+                                });
+                                setShowDropdownIndex(idx);
+                              }}
+                              className="w-full bg-black/45 text-white text-xs border border-white/5 rounded-xl py-2.5 px-3 focus:outline-none focus:border-blue-500 placeholder:text-slate-655 shadow-inner"
+                            />
+                            {showDropdownIndex === idx && m.nome.trim() && (
+                              <div className="absolute z-[70] w-full max-h-32 overflow-y-auto bg-slate-900 border border-white/10 rounded-xl mt-1 py-1 shadow-2xl">
+                                {musicasEdicaoCharts
+                                  .filter(song => song.toLowerCase().includes(m.nome.toLowerCase()))
+                                  .map(song => (
+                                    <button
+                                      key={song}
+                                      type="button"
+                                      onClick={() => {
+                                        setAlbumMusicas(prev => {
+                                          const next = [...prev];
+                                          next[idx].nome = song;
+                                          next[idx].tipo = "JÁ EXISTE";
+                                          return next;
+                                        });
+                                        setShowDropdownIndex(null);
+                                      }}
+                                      className="w-full text-left hover:bg-blue-600/25 px-3 py-2 text-xs text-slate-200 transition cursor-pointer"
+                                    >
+                                      🎵 {song}
+                                    </button>
+                                  ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Tipo e Formato Row */}
+                          <div className="grid grid-cols-2 gap-2.5 mt-1">
+                            <div>
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5 font-sans">Tipo de entrada:</label>
+                              <select
+                                value={m.tipo}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setAlbumMusicas(prev => {
+                                    const next = [...prev];
+                                    next[idx].tipo = val;
+                                    return next;
+                                  });
+                                }}
+                                className="w-full bg-black/45 text-slate-200 border border-white/5 rounded-lg py-1 px-1.5 focus:outline-none focus:border-blue-500 text-[10px] cursor-pointer"
+                              >
+                                <option value="TRACKLIST ALBUM">Criar nova faixa nos charts</option>
+                                <option value="JÁ EXISTE">Já existe nos charts (Vincular)</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5 font-sans">Formato:</label>
+                              <select
+                                value={m.formato}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setAlbumMusicas(prev => {
+                                    const next = [...prev];
+                                    next[idx].formato = val;
+                                    return next;
+                                  });
+                                }}
+                                className="w-full bg-black/45 text-slate-200 border border-white/5 rounded-lg py-1 px-1.5 focus:outline-none focus:border-blue-500 text-[10px] cursor-pointer"
+                              >
+                                <option value="SOLO">SOLO</option>
+                                <option value="DUO">DUO</option>
+                                <option value="COLAB">COLAB</option>
+                                <option value="GRUPO">GRUPO</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {albumModalStep === 'resumo' && (
+                  <div className="space-y-4">
+                    <p className="text-xs text-slate-300 text-left leading-relaxed">Reveja os detalhes finais de consolidação do Álbum antes do envio:</p>
+                    <div className="bg-black/35 p-4 rounded-3xl border border-white/5 space-y-3.5 text-left text-sans">
+                      <div className="border-b border-white/5 pb-2.5">
+                        <span className="text-[9px] font-mono text-slate-500 block uppercase font-bold tracking-wider">Título do Álbum:</span>
+                        <strong className="text-sm text-slate-100 font-display">{selectedTitulo}</strong>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 pb-2.5 border-b border-white/5">
+                        <div>
+                          <span className="text-[9px] font-mono text-slate-500 block uppercase font-bold tracking-wider">Modo do fluxo:</span>
+                          <span className={`text-xs font-bold ${albumModo === 'registro' ? 'text-blue-400' : 'text-amber-500'}`}>
+                            {albumModo === 'registro' ? '🆕 Novo Registro' : `🔄 Substituição`}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-mono text-slate-500 block uppercase font-bold tracking-wider">Tipo lançamento:</span>
+                          <span className="text-xs text-slate-100 font-semibold">{albumTipoLancamento}</span>
+                        </div>
+                      </div>
+                      <div className="border-b border-white/5 pb-2.5">
+                        <span className="text-[9px] font-mono text-slate-500 block uppercase font-bold tracking-wider">Artista Atribuído:</span>
+                        <span className="text-xs text-slate-200 font-medium">{albumArtistaPrincipal || '-'}</span>
+                      </div>
+                      {albumModo === 'substituicao' && albumSubstituido && (
+                        <div className="border-b border-white/5 pb-2.5 bg-amber-950/20 px-3 py-2 rounded-xl border border-amber-500/10">
+                          <span className="text-[9px] font-mono text-amber-550 block uppercase font-bold tracking-wider font-sans">Álbum Substituído nos Charts:</span>
+                          <span className="text-xs text-amber-250 font-bold">{albumSubstituido}</span>
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-[9px] font-mono text-slate-500 block uppercase font-bold mb-2 tracking-wider">Tracklist ({albumQtdMusicas} músicas):</span>
+                        <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                          {albumMusicas.map((m, i) => (
+                            <div key={i} className="text-xs text-slate-300 flex justify-between items-center bg-white/5 py-1.5 px-3 rounded-xl border border-white/5 font-sans">
+                              <span><strong className="text-slate-550">{i+1}.</strong> {m.nome || 'Nome não preenchido'}</span>
+                              <span className={`text-[8px] font-mono font-bold px-2 py-0.5 rounded-md uppercase ${m.tipo === 'JÁ EXISTE' ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-500/10' : 'bg-slate-900 text-slate-400'}`}>
+                                {m.tipo === 'JÁ EXISTE' ? 'Link Charts' : m.formato}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Navigation Action Footer */}
+              <div className="px-6 py-4 bg-black/40 border-t border-white/5 flex gap-3">
+                {albumModalStep !== 'modo' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (albumModalStep === 'dados') setAlbumModalStep('modo');
+                      else if (albumModalStep === 'musicas_list') setAlbumModalStep('dados');
+                      else if (albumModalStep === 'resumo') setAlbumModalStep('musicas_list');
+                    }}
+                    className="flex-1 bg-white/5 hover:bg-white/10 text-white font-bold py-3 px-4 rounded-xl text-xs transition cursor-pointer flex items-center justify-center gap-1"
+                  >
+                    Voltar
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={albumSaving}
+                  onClick={() => {
+                    if (albumModalStep === 'modo') {
+                      setAlbumModalStep('dados');
+                    } else if (albumModalStep === 'dados') {
+                      if (albumModo === 'substituicao' && !albumSubstituido.trim()) {
+                        alert("Por favor, selecione qual álbum deseja substituir nos Charts.");
+                        return;
+                      }
+                      if (!albumArtistaPrincipal.trim()) {
+                        alert("Por favor, preencha o artista principal do projeto.");
+                        return;
+                      }
+                      if (albumQtdMusicas <= 0) {
+                        alert("A quantidade de músicas deve ser maior que 0.");
+                        return;
+                      }
+                      setAlbumModalStep('musicas_list');
+                    } else if (albumModalStep === 'musicas_list') {
+                      const complete = albumMusicas.every(m => m.nome.trim() !== "");
+                      if (!complete) {
+                        alert("Por favor, preencha o nome de todas as faixas do álbum.");
+                        return;
+                      }
+                      setAlbumModalStep('resumo');
+                    } else if (albumModalStep === 'resumo') {
+                      handleGravarAlbumCompleto();
+                    }
+                  }}
+                  className={`flex-1 font-bold py-3 px-4 rounded-xl text-xs transition cursor-pointer flex items-center justify-center gap-1 text-white ${
+                    albumSaving 
+                      ? 'bg-blue-600/50 cursor-not-allowed' 
+                      : albumModalStep === 'resumo' 
+                        ? 'bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-500/10' 
+                        : 'bg-blue-600 hover:bg-blue-500 shadow-md shadow-blue-600/10'
+                  }`}
+                >
+                  {albumSaving ? 'Salvando...' : albumModalStep === 'resumo' ? 'Confirmar e Enviar' : 'Avançar'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    );
+  };
+
   if (!isAdminMode) {
     return (
       <div className="min-h-screen bg-[#0b0e11] text-slate-100 p-4 flex flex-col font-sans select-none relative overflow-y-auto">
@@ -1663,6 +2148,7 @@ export default function App() {
             🔒 Painel de Controle (Hugo)
           </button>
         </div>
+        {renderModalAlbumCompleto()}
       </div>
     );
   }
